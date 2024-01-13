@@ -11,7 +11,7 @@ def p_equal(p):
     # czy tu można zamieniać na int? bo to mogą być zmienne albo elementy tablicy
     code = loadValuesToRegs([p[1], p[3]], ['b', 'd'])
     # dodać adres ostatniego skoku tak, żeby przeskoczyło całego ifa albo pętlę
-    code += 'GET b\nSUB d\nPUT c\nGET d\nSUB b\nADD c\nJPOS'
+    code += 'GET b\nSUB d\nPUT c\nGET d\nSUB b\nADD c\nJPOS '
     p[0] = code
     
 def p_negation(p):
@@ -22,7 +22,7 @@ def p_negation(p):
     # czy tu można zamieniać na int? bo to mogą być zmienne albo elementy tablicy
     code = loadValuesToRegs([p[1], p[3]], ['b', 'd'])
     # dodać adres ostatniego skoku
-    code += 'GET b\nSUB d\nPUT c\nGET d\nSUB b\nADD c\nJZERO'
+    code += 'GET b\nSUB d\nPUT c\nGET d\nSUB b\nADD c\nJZERO '
     p[0] = code
 
 def p_greater_less(p):
@@ -50,5 +50,5 @@ def p_greater_less_equal(p):
         code += loadValuesToRegs([p[1], p[3]], ['d', 'b'])
     # uzupełnić adres skoku po JPOS - wartość w rejestrze b jest większa niż w d, więc warunek prawdziwy
     # dodać adres skoku po drugim JPOS - warunek nie jest prawdziwy, więc muszę przeskoczyć fragment kodu
-    code += 'GET b\nSUB d\nJPOS \nGET d\nSUB b\nJPOS '
-    p[0] = code
+    #code += 'GET b\nSUB d\nJPOS \nGET d\nSUB b\nJPOS '
+    p[0] = (code, 'GET b\nSUB d\nJPOS ', '\nGET d\nSUB b\nJPOS ')
