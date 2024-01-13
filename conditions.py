@@ -1,5 +1,6 @@
 
 from compilerFunctions import *
+
 ### CONDITIONS ###
 
 def p_equal(p):
