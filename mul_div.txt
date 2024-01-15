@@ -1,0 +1,51 @@
+# wartości w rejestrach b, d
+RST f # załóżmy, że w f będzie wynik; linijka 0
+GET d
+SHR a
+SHL a
+PUT c
+GET d
+SUB c
+JZERO 11
+GET f
+ADD b
+PUT f
+SHL b
+SHR d
+GET d
+JPOS 1
+# wynik jest w f
+
+# teraz dzielenie
+# wartości w rejestrach b i d
+RST e # wynik w rejestrze e
+RST c # linijka 1
+GET d
+PUT c
+GET b
+SUB c
+JZERO 9
+INC e
+JPOS 14
+GET c
+SUB b
+JPOS 26 # druga liczba jest większa, trzeba wyskoczyć z dzielenia
+INC e
+JUMP 26 # w obu przypadkach różnica wyszła 0, więc liczby są równe - do wyniku dodać 1???
+SHL c
+GET b
+SUB c
+JZERO 21
+INC e
+INC e
+JPOS 14 # mogę jeszcze raz zwiększyć wartość razy 2
+# na razie omijam sprawdzanie, dlaczego wynik równy 0, oba przypadki traktuję jako jeden
+SHR c
+GET b
+SUB c
+PUT b
+JUMP 2
+# linijka 26 - pierwsza poza dzieleniem
+
+
+

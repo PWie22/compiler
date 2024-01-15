@@ -2,11 +2,6 @@
 import ply.yacc as yacc
 from myLexer import build_lexer, tokens
 import sys
-# próba kolejnego commitu
-
-#class MyParser(Parser):
-
-#tokens = MyLexer.tokens
 
 # ta tablica będzie zawierać wszystkie zadeklarowane symbole w postaci: (nazwa_symbolu, czy_tablica, pojemność_tablicy, miejsce_w_pamięci, czy_zainicjowana)
 # nazwa_procedury tylko, jeżeli zmienna pochodzi z procedury; jeszcze musi być adres pamięci
@@ -21,14 +16,14 @@ curr_line_in_code = 0
 
 # funkcja dodająca nową nazwę zmiennej do zbioru już zadeklarowanych zmiennych
 def addSymbolToArray(varName, ifArray, capacity, lineNumb):
-    # ta metoda nie "dokłada" kodu, jest potrzebna tylko do działania kompilatora
+    # ta metoda nie "dokłada" kodu, jest potrzebna tylko do działania kompilatora, dlatego nic w niej nie zwracam
     global symbols_array, first_free_mem_index
     j = None
     for i in range(len(symbols_array)):
         if symbols_array[i][0] == varName:
             j = i
     if j != None:
-        print("Error: Redeclaration of variable ", varName, " in line ", lineNumb)
+        print("Error: Redeclaration of variable {} in line {}.".format(varName, lineNumb))
     else:
         symbols_array.append([varName, ifArray, capacity, first_free_mem_index, False])
         if ifArray:
@@ -36,7 +31,7 @@ def addSymbolToArray(varName, ifArray, capacity, lineNumb):
         else:
             first_free_mem_index += 1
 
-    # do rejestrów nie można wpisać wartości po prostu podając liczbę, trzeba ją "wygenerować" w rejestrze
+# do rejestrów nie można wpisać wartości po prostu podając liczbę, trzeba ją "wygenerować" w rejestrze
 def loadValueToRegister(regName, value):
     code = ''
     while (value > 0):
@@ -49,21 +44,20 @@ def loadValueToRegister(regName, value):
     code = 'RESET {}\n'.format(regName) + code
     return code
 
-# można jeszcze przekazać numer linii, w której jest błąd
-def loadVariableToRegister(varName, regName):
+def loadVariableToRegister(varName, regName, lineNumb):
     # najpierw trzeba znaleźć, gdzie w pamięci jest zmienna o danej nazwie i potem odczytać jej wartość
     global symbols_array
     code = ''
     j = None
+    print("variable: ", varName)
     for i in range(len(symbols_array)):
         if symbols_array[i][0] == varName:
             j = i
     if j == None:
-        raise Exception("Error: Usage of undeclared variable {} in line .".format(varName))
+        raise Exception("Error: Usage of undeclared variable {} in line {}.".format(varName, lineNumb))
     else:
-        # czy trzeba rozróżniać wstawianie wartości elementów tablic do rejestrów od wstawiania zwyczajnych liczb???
         #code += self.loadValueToRegister(regName, symbols_array[j][3])
-        code += loadValueToRegister('b', symbols_array[j][3]) + 'LOAD b\nPUT {}'.format(regName)
+        code += loadValueToRegister('b', symbols_array[j][3]) + 'LOAD b\nPUT {}\n'.format(regName)
         # osobno obsłużyć przypadek, kiedy to jest tablica indeksowana zmienną - wtedy chyba trzeba najpierw odczytać
         # z pamięci zmienną, a potem element tablicy
         # przypadek, kiedy jest to element tablicy indeksowany liczbą - wtedy adres pamięci jest następujący:
@@ -72,7 +66,7 @@ def loadVariableToRegister(varName, regName):
 
 # można by to zrobić wyżej, ale tablica może być indeksowana zmienną, więc wygodniej będzie zrobić osobną funkcję
 # do rejestru jest wkładany tylko element tablicy; index - pozycja rządanego elementu
-def loadArrayToRegister(arrName, regName, index):
+def loadArrayToRegister(arrName, regName, index, lineNumb):
     global symbols_array
     code = ''
     j = None
@@ -80,31 +74,29 @@ def loadArrayToRegister(arrName, regName, index):
         if symbols_array[i][0] == arrName:
             j = i
     if j == None:
-        raise Exception("Error: Usage of undeclared array {} in line .".format(arrName))
+        raise Exception("Error: Usage of undeclared array {} in line {}.".format(arrName, lineNumb))
     else:
         if type(index) is int:
             # tablica indeksowana liczbą
-            # sprawdzić, czy na pewno nie muszę przekonwertować index na int (int(index))
             code += loadValueToRegister('b', symbols_array[j][3]+index-1) + 'LOAD b\nPUT {}'.format(regName)
-            print()
         else:
             # tablica indeksowana zmienną
             code += loadVariableToRegister(index, 'c') + loadValueToRegister('a', symbols_array[j][3]) + 'ADD c\nDEC a\nPUT b\nLOAD b\nPUT {}\n'.format(regName)
-            print()
     return code
 
 # funkcja potrzebna, żeby nie sprawdzać czym są val1 i val2 wiele razy
 # w values są trzymane dwójki (val, is_numb) - val to wartość, is_numb to wartość boolowska, jest równa true, jeżeli to jest zwykła liczba
-def loadValuesToRegs(values, regs):
+def loadValuesToRegs(values, regs, lineNumb):
     code = ''
     for i in range(len(values)):
-        if type(values[i][1]) is tuple:
-            if values[i][1][1]:
-                # to jest zwykła zmienna
-                code += loadVariableToRegister(regs[i], values[i][0])
-            else:
+        #if type(values[i][0]) is tuple:
+        if not values[i][1]:
+            if values[i][0][1]:
                 # to jest element tablicy
-                code += loadArrayToRegister(values[i][1][0], regs[i], values[i][1][2])
+                code += loadArrayToRegister(values[i][1][0], regs[i], values[i][1][2], lineNumb)
+            else:
+                # to jest zwykła zmienna
+                code += loadVariableToRegister(values[i][0][0], regs[i], lineNumb)
         else:
             # to jest zwykła liczba
             code += loadValueToRegister(regs[i], int(values[i][0]))
@@ -119,11 +111,8 @@ precedence = (
         
 def p_program(p):
     '''program : procedures main'''
-    # czy nie powinno być jeszcze samego maina, bo co, jeżeli nie ma żadnych procedur?
-    # co tutaj zrobić, czy tego nie usunąć???
-    # co się dzieje, jeżeli nie ma żadnych procedur
     if not p[1]:
-        p[0] = p[2]
+        p[0] = p[2] + 'HALT'
     else:
         procLen = len(p[1].split('\n'))
         p[0] = 'JUMP {}'.format(procLen) + p[1] + p[2] + 'HALT'
@@ -131,7 +120,6 @@ def p_program(p):
 def p_main(p):
     '''main : PROGRAM IS declarations IN commands END
             | PROGRAM IS IN commands END'''
-    # tutaj trzeba sczytać wszystko z declarations, jeżeli są
     if len(p) == 7:
         # tutaj dodać funkcję dodającą nazwy zadeklarowanych zmiennych do tablicy
         p[0] = p[5]
@@ -144,7 +132,6 @@ def p_procedures(p):
                     | procedures PROCEDURE proc_head IS IN commands END
                     |'''
     global procedures_list
-    # upewnić się, czy te numery linijek są na pewno dobrze dobrane - czy jest możliwe, żeby przed wstawieniem końca lin
     if (len(p) == 1):
         print("okej")
     elif (len(p) == 9):
@@ -167,7 +154,7 @@ def p_proc_head(p):
         if procedures_list[i][0] == p[1]:
             j = i
     if j != None:
-        raise Exception("Error: Redaclaration of procedure {} in line .".format(p[1]))
+        raise Exception("Error: Redaclaration of procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
     else:
         #procedures_list.append([p[1], p.lineno, 0])
         p[0] = (p[1], p.lineno)
@@ -184,17 +171,17 @@ def p_proc_call(p):
         if procedures_list[i][0] == p[1]:
             j = i
     if j == -1:
-        raise Exception("Error: Calling unexisting procedure {} in line .".format(p[1]))
+        raise Exception("Error: Calling unexisting procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
     else:
         line_of_call = p.lineno
         if line_of_call < procedures_list[j][1]:
             # ten przypadek chyba nie zajdzie, bo przed zadeklarowaniem procedury nie ma jej w procedures_list
-            raise Exception("Error: Calling procedure {} in line  before it is declared.".format(p[1]))
+            raise Exception("Error: Calling procedure {} in line {} before it is declared.".format(p[1], p.lexer.lineno-1))
         elif line_of_call > procedures_list[j][1] and line_of_call < procedures_list[j][2]:
-            raise Exception("Error: Recursive call of procedure {} in line .".format(p[1]))
+            raise Exception("Error: Recursive call of procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
         else:
             print()
-            # tutaj trzeba dodać skok do miejsca, w którym zaczyna się procedura - ale p.lineno daje nam linijkę w kodzie,
+            # tutaj trzeba dodać skok do miejsca, w którym zaczyna się procedura - ale p.lexer.lineno daje nam linijkę w kodzie,
             # więc trzeba jakoś inaczej znaleźć adres skoku
     # teraz chyba trzeba dodać else, żeby dodać jump???
 
@@ -218,7 +205,7 @@ def p_args_proc(p):
 def p_array_use(p):
     '''declarations : declarations COMMA VARID SQLPAREN NUMBER SQRPAREN
                     | VARID SQLPAREN NUMBER SQRPAREN'''
-    line = p.lineno # numer linii, w której jest dopasowany tekst
+    line = p.lexer.lineno # numer linii, w której jest dopasowany tekst
     if len(p) == 7:
         addSymbolToArray(p[3], True, int(p[5]), line)
     else:
@@ -227,7 +214,7 @@ def p_array_use(p):
 def p_var_use(p):
     '''declarations : declarations COMMA VARID
                     | VARID'''
-    line = p.lineno
+    line = p.lexer.lineno
     #if p[1] != None:
     if len(p) == 4:
         addSymbolToArray(p[3], False, 0, line)
@@ -244,7 +231,6 @@ def p_commands(p):
     
 def p_assign(p):
     'command : identifier ASSIGN expression SEMICOLON'
-    # tutaj jest inicjowanie zmiennych, trzeba wywołać funkcję, która zapisuje wartości zmiennych do tablicy
     global symbols_array
     code = ''
     j = None
@@ -252,14 +238,24 @@ def p_assign(p):
         if p[1][0] == symbols_array[i][0]:
             j = i
     if j == None:
-        raise Exception("Error: Assigning value to undeclared variable {} in line .".format(p[1][0]))
+        raise Exception("Error: Assigning value to undeclared variable {} in line {}.".format(p[1][0], p.lexer.lineno-1))
     else:
-        # jak przypisuję wartość do zmiennej, to muszę ją zapisać w pamięci???
-        # muszę znaleźć adres zajmowany w pamięci przez zmienną, potem wziąć kod wygenerowany przez expression, a na koniec dodać STORE [adres w pamięci]
         #code += loadValueToRegister('b', symbols_array[j][3]) + str(p[3][0]) + 'STORE b\n'
-        code += loadValueToRegister('b', symbols_array[j][3]) + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
-        print(symbols_array)
+        if symbols_array[j][1]:
+            # to jest tablica
+            if type(p[0][2]) is int:
+                # to jest tablica indeksowana liczbą
+                code += loadValueToRegister('b', symbols_array[j][3] + p[0][3] - 1) + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
+            else:
+                # to jest tablica indeksowana zmienną
+                code += loadVariableToRegister(p[0][3], 'a', p.lexer.lineno-1) + loadValueToRegister('b', symbols_array[j][3]) + 'ADD b\nPUT b\n'\
+                    + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
+        else:
+            # to jest zmienna
+            code += loadValueToRegister('b', symbols_array[j][3]) + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
+        symbols_array[j][4] = True
         p[0] = code
+
 
 def p_if_statement(p):
     'command : IF condition THEN commands ENDIF'
@@ -358,9 +354,9 @@ def p_greater_less(p):
     code = ''
     if p[2] == ">":
         # czy tu można zamieniać na int? bo to mogą być zmienne albo elementy tablicy
-        code += loadValuesToRegs([p[1], p[3]], ['b', 'd'])
+        code += loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1)
     else:
-        code += loadValuesToRegs([p[1], p[3]], ['d', 'b'])
+        code += loadValuesToRegs([p[1], p[3]], ['d', 'b'], p.lexer.lineno-1)
     # muszę skoczyć, kiedy liczby są równe albo ta w rejestrze d jest większa
     code += 'GET b\nSUB d\nJZERO '
     p[0] = code
@@ -400,7 +396,8 @@ def p_add_sub(p):
 def p_multiply(p):
     'expression : value TIMES value'
     code = loadValuesToRegs([p[1], p[3]], ['b', 'd'])
-    code += 'RST c\nGET b\nSUB d\nJPOS  \nGET b\nPUT e\nSHR e\nSHL e\nGET d\nSUB e\nJPOS  \n \nGET d\nPUT e\nSHR e\nSHL e\nGET d\nSUB e\nJPOS  \n'
+    #code += 'RST c\nGET b\nSUB d\nJPOS  \nGET b\nPUT e\nSHR e\nSHL e\nGET d\nSUB e\nJPOS  \n \nGET d\nPUT e\nSHR e\nSHL e\nGET d\nSUB e\nJPOS  \n'
+    code += 'RST e\n GET d\nSHR a\nSHL a\nPUT c\nGET d\nSUB c\nJZERO \nGET e\nADD b\nPUT e\nSHL b\nSHR d\nGET d\nJPOS \n'
     p[0] = code
 
 def p_divide(p):
@@ -408,8 +405,10 @@ def p_divide(p):
     code = loadValuesToRegs([p[1], p[3]], ['b', 'd'])
     # trzeba poprawić i jeszcze dopisać adresy skoków
     # wynik jest w rejestrze f
-    code += 'RST c\nRST f\nGET d\nPUT e\nSHL e\nGET b\nJZERO  \nSUB e\nJZERO  \nINC c\nJUMP  \nGET e\nJZERO  \nSUB b\nJZERO  \nSHL c\nGET c\nADD f\nPUT f\nRST c\
-        \nSHR e\nGET b\nSUB e\nSHL a\nPUT e\nJUMP  \n'
+    #code += 'RST c\nRST f\nGET d\nPUT e\nSHL e\nGET b\nJZERO  \nSUB e\nJZERO  \nINC c\nJUMP  \nGET e\nJZERO  \nSUB b\nJZERO  \nSHL c\nGET c\nADD f\nPUT f\nRST c\
+        #\nSHR e\nGET b\nSUB e\nSHL a\nPUT e\nJUMP  \n'
+    code += 'RST e\nRST c\nGET d\nPUT c\nGET b\nSUB c\nJZERO 9\nINC e\nJPOS \nGET c\nSUB b\nJPOS \nINC e\nJUMP \nSHL c\nGET b\nSUB c\
+        \nJZERO\nINC e\nINC e\nJPOS\nSHR c\nGET b\nSUB c\nPUT b\nJUMP \n'
     p[0] = code
 
 def p_modulo(p):
@@ -421,18 +420,13 @@ def p_modulo(p):
 def p_read(p):
     'command : READ identifier SEMICOLON'
     code = ''
-    # trzeba najprawdopodobniej zapisać wartość zmiennej do pamięci
     j = None
     for i in range(len(symbols_array)):
         if p[2][0][0] == symbols_array[i][0]:
             j = i
     if j == None:
-        raise Exception("Error: Usage of undeclared variable {} in line .".format(p[2][0]))
+        raise Exception("Error: Usage of undeclared variable {} in line {}.".format(p[2][0], p.lexer.lineno-1))
     else:
-        # po odczytaniu trzeba wstawić do pamięci, ale do tego trzeba odczytać, w którym miejscu pamięci ma byc wstawiona dana zmienna
-        # trzeba też oznaczyć odpowiednią zmienną jako zainicjowaną
-        # po odczytaniu wartość znajduje się w rejestrze a, teraz muszę wstawić do innego rejestru adres, pod który wstawię tą wartość
-        # na końcu użyć LOAD
         if p[2][0][1]:
             # to jest tablica
             if type(p[2][0][2]) is int:
@@ -462,7 +456,7 @@ def p_write(p):
             code += loadArrayToRegister(p[2][0][0], 'a', p[2][0][2])
         else:
             # to jest zmienna
-            code += loadVariableToRegister(p[2], 'a') + 'WRITE\n'
+            code += loadVariableToRegister(p[2][0][0], 'a', p.lexer.lineno-1) + 'WRITE\n'
     p[0] = code
 
 def p_value_numb(p):
@@ -488,21 +482,20 @@ def p_array_identifier(p):
 ### SYNTAX ERRORS ###
 
 def p_error(p):
-    raise SyntaxError("Error: Syntax error {} in line {}.".format(p, p.lexer.lineno))
+    raise SyntaxError("Error: Syntax error in line {}.".format(p.lexer.lineno-1))
 
 programme = ''
 compiled = ''
 
 with open(sys.argv[1], "r") as f:
     programme = f.read()
-    #compiled = parser.parse(lexer.tokenize(programme))
     lexer = build_lexer()
     parser = yacc.yacc()
 
-try:
-    compiled = parser.parse(programme, tracking=True)
+#try:
+compiled = parser.parse(programme, tracking=True)
     #print(compiled)
-    with open(sys.argv[2], "w") as file:
-        file.write(compiled)
-except Exception as ex:
-    print(ex, " ")
+with open(sys.argv[2], "w") as file:
+    file.write(compiled)
+#except Exception as ex:
+#    print(ex, " ")

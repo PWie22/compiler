@@ -27,6 +27,7 @@ def t_NUMBER(t):
 
 def t_NEWLINE(t):
     r'\n+'
+    t.lexer.lineno += 1
     pass
 
 #NUMBER = r'\d+'
