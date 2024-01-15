@@ -2,6 +2,7 @@
 import ply.yacc as yacc
 from myLexer import build_lexer, tokens
 import sys
+# próba kolejnego commitu
 
 #class MyParser(Parser):
 

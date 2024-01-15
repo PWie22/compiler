@@ -2,8 +2,6 @@
 import ply.lex as lex
 import sys
 
-#class MyLexer(Lexer):
-
 tokens = ('NEWLINE', 'VARID', 'NUMBER',
             'PLUS', 'MINUS', 'TIMES', 'DIVIDE', 'MOD',
             'ASSIGN', 'NEG', 'SQRPAREN', 'SQLPAREN', 'RPAREN', 'LPAREN',
