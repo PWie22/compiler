@@ -62,7 +62,7 @@ def loadVariableToRegister(varName, regName, lineNumb):
         # z pamięci zmienną, a potem element tablicy
         # przypadek, kiedy jest to element tablicy indeksowany liczbą - wtedy adres pamięci jest następujący:
         # pierwszy_indeks_zajmowany_w_pamięci_przez_tablicę + liczba_w_nawiasach - 1
-    return code
+        return code
 
 # można by to zrobić wyżej, ale tablica może być indeksowana zmienną, więc wygodniej będzie zrobić osobną funkcję
 # do rejestru jest wkładany tylko element tablicy; index - pozycja rządanego elementu
@@ -91,7 +91,9 @@ def loadValuesToRegs(values, regs, lineNumb):
     for i in range(len(values)):
         #if type(values[i][0]) is tuple:
         if not values[i][1]:
-            if values[i][0][1]:
+            #print(values[i][1])
+            #if values[i][0][1]:
+            if values[i][1]:
                 # to jest element tablicy
                 code += loadArrayToRegister(values[i][1][0], regs[i], values[i][1][2], lineNumb)
             else:
@@ -112,6 +114,7 @@ precedence = (
 def p_program(p):
     '''program : procedures main'''
     if not p[1]:
+        print("tutaj")
         p[0] = p[2] + 'HALT'
     else:
         procLen = len(p[1].split('\n'))
@@ -231,8 +234,9 @@ def p_commands(p):
     
 def p_assign(p):
     'command : identifier ASSIGN expression SEMICOLON'
-    global symbols_array
+    global symbols_array, curr_line_in_code
     code = ''
+    codeLen = 0
     j = None
     for i in range(len(symbols_array)):
         if p[1][0] == symbols_array[i][0]:
@@ -241,21 +245,38 @@ def p_assign(p):
         raise Exception("Error: Assigning value to undeclared variable {} in line {}.".format(p[1][0], p.lexer.lineno-1))
     else:
         #code += loadValueToRegister('b', symbols_array[j][3]) + str(p[3][0]) + 'STORE b\n'
+        code += loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1)
+        if type(p[3][0]) is str:
+            # to jest wyrażenie
+            code += 'GET {}\nSTORE b\n'.format(p[3][0])
+        else:
+            # to jest liczba, zmienna albo element tablicy
+            code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1) + 'LOAD c\nSTORE b\n'
+        '''
         if symbols_array[j][1]:
             # to jest tablica
-            if type(p[0][2]) is int:
+            #if type(p[0][2]) is int:
+            if type(p[1][2]) is int:
                 # to jest tablica indeksowana liczbą
-                code += loadValueToRegister('b', symbols_array[j][3] + p[0][3] - 1) + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
+                #code += loadValueToRegister('b', symbols_array[j][3] + p[0][3] - 1) + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
+                code += loadValueToRegister('b', symbols_array[j][3] + p[1][2] - 1) + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
+                codeLen += len(code.split('\n'))
             else:
                 # to jest tablica indeksowana zmienną
                 code += loadVariableToRegister(p[0][3], 'a', p.lexer.lineno-1) + loadValueToRegister('b', symbols_array[j][3]) + 'ADD b\nPUT b\n'\
                     + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
+                codeLen += len(code.split('\n'))
         else:
             # to jest zmienna
+                #code += p[3][1] + loadValueToRegister('b', symbols_array[j][3]) + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
             code += loadValueToRegister('b', symbols_array[j][3]) + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
+            codeLen += len(code.split('\n'))
         symbols_array[j][4] = True
         p[0] = code
-
+    #curr_line_in_code += 1
+        curr_line_in_code += codeLen
+        '''
+        p[0] = code
 
 def p_if_statement(p):
     'command : IF condition THEN commands ENDIF'
@@ -263,6 +284,7 @@ def p_if_statement(p):
     code = ''
     # trzeba zapisać to, co mamy condition i commands
     commLen = len(p[4].split('\n'))
+    print("commLen: ", commLen, " curr: ", curr_line_in_code)
     if p[2] is tuple:
         # w warunku występuje >= lub <= - są tam dwa skoki zamiast jednego, dlatego ten przypadek osobno
         code += p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code + 3) + p[2][2] + '{}\n'.format(curr_line_in_code + commLen)
@@ -290,6 +312,7 @@ def p_if_else_statement(p):
         curr_line_in_code += 6 + commLen1 + commLen2 + 1 # 6 to długość kodu dla tego warunku
     else:
         code += p[2] + '{}\n'.format(curr_line_in_code + commLen1) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + commLen1 + commLen2) + p[6]
+        curr_line_in_code += commLen1 + commLen2
     #p[0] = p[2] + p[4] + p[6]
     p[0] = code
 
@@ -327,24 +350,13 @@ def p_repeat_loop(p):
 
 def p_equal(p):
     'condition : value EQUAL value'
-    # procedura działania: załadować liczby do dwóch różnych rejestrów, w innym rejestrze odjąć val1 od val2,
-    # w jednym z dwóch pierwszych odjąć val2 od val1, a potem dodać do siebie dwie różnice
-    # wynik będzie równy zero tylko wtedy, gdy dwie liczby są sobie równe
-    # przemyśleć, czy jakiś skok nie jest potrzebny, ale chyba nie
-    # czy tu można zamieniać na int? bo to mogą być zmienne albo elementy tablicy
     code = loadValuesToRegs([p[1], p[3]], ['b', 'd'])
-    # dodać adres ostatniego skoku tak, żeby przeskoczyło całego ifa albo pętlę
     code += 'GET b\nSUB d\nPUT c\nGET d\nSUB b\nADD c\nJPOS '
     p[0] = code
     
 def p_negation(p):
     'condition : value NEG value'
-    # procedura działania: załadować val1 i val2 do dwóch rejestrów, w innym rejestrze odjąć val1 od val2,
-    # gdzieś indziej odjąć val2 od val1, potem dodać do siebie te dwie różnice
-    # porównać je, jeżeli wynik jest różny od zera, to liczby nie są sobie równe
-    # czy tu można zamieniać na int? bo to mogą być zmienne albo elementy tablicy
     code = loadValuesToRegs([p[1], p[3]], ['b', 'd'])
-    # dodać adres ostatniego skoku
     code += 'GET b\nSUB d\nPUT c\nGET d\nSUB b\nADD c\nJZERO '
     p[0] = code
 
@@ -353,11 +365,9 @@ def p_greater_less(p):
                     | value LESS value'''
     code = ''
     if p[2] == ">":
-        # czy tu można zamieniać na int? bo to mogą być zmienne albo elementy tablicy
         code += loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1)
     else:
         code += loadValuesToRegs([p[1], p[3]], ['d', 'b'], p.lexer.lineno-1)
-    # muszę skoczyć, kiedy liczby są równe albo ta w rejestrze d jest większa
     code += 'GET b\nSUB d\nJZERO '
     p[0] = code
 
@@ -367,13 +377,9 @@ def p_greater_less_equal(p):
     code = ''
     # te dwa rodzaje warunków są takie same, są własną odwrotnością, wystarczy wstawić wartości do rejestrów odwrotnie
     if p[2] == ">=":
-        # czy tu można zamieniać na int? bo to mogą być zmienne albo elementy tablicy
         code += loadValuesToRegs([p[1], p[3]], ['b', 'd'])
     else:
         code += loadValuesToRegs([p[1], p[3]], ['d', 'b'])
-    # uzupełnić adres skoku po JPOS - wartość w rejestrze b jest większa niż w d, więc warunek prawdziwy
-    # dodać adres skoku po drugim JPOS - warunek nie jest prawdziwy, więc muszę przeskoczyć fragment kodu
-    #code += 'GET b\nSUB d\nJPOS \nGET d\nSUB b\nJPOS '
     p[0] = (code, 'GET b\nSUB d\nJPOS ', '\nGET d\nSUB b\nJPOS ')
 
 ### EXPRESSIONS ###
@@ -385,37 +391,34 @@ def p_expression_value(p):
 def p_add_sub(p):
     '''expression : value PLUS value
                     | value MINUS value'''
-    code = loadValuesToRegs([p[1], p[3]], ['b', 'd'])
+    code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1)
     if p[2] == '+':
-        # chyba zamiast PUT f powinno być zapisywanie do pamięci, czy może jednak trzymanie w rejestrach???
         code += 'GET b\nADD d\nPUT f\n'
     else:
         code += 'GET b\nSUB d\nPUT f\n'
-    p[0] = code
+    p[0] = ('f', code)
 
 def p_multiply(p):
     'expression : value TIMES value'
     code = loadValuesToRegs([p[1], p[3]], ['b', 'd'])
     #code += 'RST c\nGET b\nSUB d\nJPOS  \nGET b\nPUT e\nSHR e\nSHL e\nGET d\nSUB e\nJPOS  \n \nGET d\nPUT e\nSHR e\nSHL e\nGET d\nSUB e\nJPOS  \n'
     code += 'RST e\n GET d\nSHR a\nSHL a\nPUT c\nGET d\nSUB c\nJZERO \nGET e\nADD b\nPUT e\nSHL b\nSHR d\nGET d\nJPOS \n'
-    p[0] = code
+    p[0] = ('e', code)
 
 def p_divide(p):
     'expression : value DIVIDE value'
     code = loadValuesToRegs([p[1], p[3]], ['b', 'd'])
-    # trzeba poprawić i jeszcze dopisać adresy skoków
-    # wynik jest w rejestrze f
     #code += 'RST c\nRST f\nGET d\nPUT e\nSHL e\nGET b\nJZERO  \nSUB e\nJZERO  \nINC c\nJUMP  \nGET e\nJZERO  \nSUB b\nJZERO  \nSHL c\nGET c\nADD f\nPUT f\nRST c\
         #\nSHR e\nGET b\nSUB e\nSHL a\nPUT e\nJUMP  \n'
     code += 'RST e\nRST c\nGET d\nPUT c\nGET b\nSUB c\nJZERO 9\nINC e\nJPOS \nGET c\nSUB b\nJPOS \nINC e\nJUMP \nSHL c\nGET b\nSUB c\
-        \nJZERO\nINC e\nINC e\nJPOS\nSHR c\nGET b\nSUB c\nPUT b\nJUMP \n'
-    p[0] = code
+        \nJZERO \nINC e\nINC e\nJPOS\nSHR c\nGET b\nSUB c\nPUT b\nJUMP \n'
+    p[0] = ('e', code)
 
 def p_modulo(p):
     'expression : value MOD value'
     code = loadValuesToRegs([p[1], p[3]], ['b', 'd'])
-    code += ''
-    p[0] = code
+    code += 'RST e\n'
+    p[0] = ('e', code)
 
 def p_read(p):
     'command : READ identifier SEMICOLON'
@@ -461,13 +464,13 @@ def p_write(p):
 
 def p_value_numb(p):
     'value : NUMBER'
-    # czy nie trzeba zamienić elementów tablicy p na int
     p[0] = (p[1], True)
     
 def p_value_id(p):
     'value : identifier'
     # czy nie trzeba zamienić elementów tablicy p na int
     p[0] = (p[1], False)
+    print("identifier: ", p[0])
 
 def p_identifier(p):
     'identifier : VARID'
@@ -493,9 +496,9 @@ with open(sys.argv[1], "r") as f:
     parser = yacc.yacc()
 
 #try:
-compiled = parser.parse(programme, tracking=True)
+    compiled = parser.parse(programme, tracking=True)
     #print(compiled)
-with open(sys.argv[2], "w") as file:
-    file.write(compiled)
+    with open(sys.argv[2], "w") as file:
+        file.write(compiled)
 #except Exception as ex:
-#    print(ex, " ")
+    #print(ex, " ")
