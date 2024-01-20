@@ -62,10 +62,6 @@ def loadVariableToRegister(varName, regName, lineNumb, onlyAddress):
         #code += loadValueToRegister('b', symbols_array[j][3]) + 'LOAD b\nPUT {}\n'.format(regName)
         print('gdzie indziej: ', symbols_array[j][3], " ", symbols_array[j])
         code += loadValueToRegister('b', symbols_array[j][3])
-        # osobno obsłużyć przypadek, kiedy to jest tablica indeksowana zmienną - wtedy chyba trzeba najpierw odczytać
-        # z pamięci zmienną, a potem element tablicy
-        # przypadek, kiedy jest to element tablicy indeksowany liczbą - wtedy adres pamięci jest następujący:
-        # pierwszy_indeks_zajmowany_w_pamięci_przez_tablicę + liczba_w_nawiasach - 1
         if not onlyAddress:
             code += 'LOAD b\nPUT {}\n'.format(regName)
         return code
@@ -102,9 +98,7 @@ def loadValuesToRegs(values, regs, lineNumb, onlyAddress):
     for i in range(len(values)):
         print(values[i])
         #if type(values[i][0]) is tuple:
-        #print(values[i][1])
         #if not values[i][1]:
-        #print(values[i][0])
         #if not values[i][1]:
         if not values[i][0][0][1]:
         #if isinstance(values[i][0], tuple):
@@ -117,7 +111,6 @@ def loadValuesToRegs(values, regs, lineNumb, onlyAddress):
                 code += loadArrayToRegister(values[i][0][0][0], regs[i], values[i][2], lineNumb, onlyAddress)
             else:
                 # to jest zwykła zmienna
-                print("szukam: ", values[i][0][0], " ", symbols_array)
                 #code += loadVariableToRegister(values[i][0][0], regs[i], lineNumb, onlyAddress)
                 code += loadVariableToRegister(values[i][0][0][0], regs[i], lineNumb, onlyAddress)
         else:
@@ -230,7 +223,7 @@ def p_args_proc(p):
 def p_array_use(p):
     '''declarations : declarations COMMA VARID SQLPAREN NUMBER SQRPAREN
                     | VARID SQLPAREN NUMBER SQRPAREN'''
-    line = p.lexer.lineno # numer linii, w której jest dopasowany tekst
+    line = p.lexer.lineno-1 # numer linii, w której jest dopasowany tekst
     if len(p) == 7:
         addSymbolToArray(p[3], True, int(p[5]), line)
     else:
@@ -239,7 +232,7 @@ def p_array_use(p):
 def p_var_use(p):
     '''declarations : declarations COMMA VARID
                     | VARID'''
-    line = p.lexer.lineno
+    line = p.lexer.lineno-1
     #if p[1] != None:
     if len(p) == 4:
         addSymbolToArray(p[3], False, 0, line)
@@ -271,39 +264,14 @@ def p_assign(p):
         symbols_array[j][4] = True
         #code += loadValueToRegister('b', symbols_array[j][3]) + str(p[3][0]) + 'STORE b\n'
         #ładowanie adresu zmiennej do rejestru, żeby móc zapisać tam jej nową wartość
-        print("     +++++++ coś tam: ", p[1])
-        code += loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1, True)
+        #code += loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1, True)
         #code += loadValuesToRegs((p[1][0][0],), ('b',), p.lexer.lineno-1, True)
         if type(p[3][0]) is str:
             # to jest wyrażenie
-            code += p[3][1] + 'GET {}\nSTORE b\n'.format(p[3][0])
+            code += p[3][1] + loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1, True) + 'GET {}\nSTORE b\n'.format(p[3][0])
         else:
             # to jest liczba, zmienna albo element tablicy
-            code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, True) + 'GET c\nSTORE b\n'
-        '''
-        if symbols_array[j][1]:
-            # to jest tablica
-            #if type(p[0][2]) is int:
-            if type(p[1][2]) is int:
-                # to jest tablica indeksowana liczbą
-                #code += loadValueToRegister('b', symbols_array[j][3] + p[0][3] - 1) + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
-                code += loadValueToRegister('b', symbols_array[j][3] + p[1][2] - 1) + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
-                codeLen += len(code.split('\n'))
-            else:
-                # to jest tablica indeksowana zmienną
-                code += loadVariableToRegister(p[0][3], 'a', p.lexer.lineno-1) + loadValueToRegister('b', symbols_array[j][3]) + 'ADD b\nPUT b\n'\
-                    + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
-                codeLen += len(code.split('\n'))
-        else:
-            # to jest zmienna
-                #code += p[3][1] + loadValueToRegister('b', symbols_array[j][3]) + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
-            code += loadValueToRegister('b', symbols_array[j][3]) + loadValueToRegister('a', p[3][0]) + 'STORE b\n'
-            codeLen += len(code.split('\n'))
-        symbols_array[j][4] = True
-        p[0] = code
-    #curr_line_in_code += 1
-        curr_line_in_code += codeLen
-        '''
+            code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, True) + loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1, True) + 'GET c\nSTORE b\n'
         p[0] = code
 
 def p_if_statement(p):
@@ -430,7 +398,8 @@ def p_multiply(p):
     'expression : value TIMES value'
     code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], False)
     #code += 'RST c\nGET b\nSUB d\nJPOS  \nGET b\nPUT e\nSHR e\nSHL e\nGET d\nSUB e\nJPOS  \n \nGET d\nPUT e\nSHR e\nSHL e\nGET d\nSUB e\nJPOS  \n'
-    code += 'RST e\n GET d\nSHR a\nSHL a\nPUT c\nGET d\nSUB c\nJZERO \nGET e\nADD b\nPUT e\nSHL b\nSHR d\nGET d\nJPOS \n'
+    #code += 'RST e\nGET d\nSHR a\nSHL a\nPUT c\nGET d\nSUB c\nJZERO \nGET e\nADD b\nPUT e\nSHL b\nSHR d\nGET d\nJPOS \n'
+    code += 'RST e\nGET b\nJZERO \nGET d\nJZERO \nPUT c\nSHR c\nSHL c\nSUB c\nJPOS \nSHL b\nSHR d\nJUMP \nGET e\nADD b\nPUT e\nJUMP \nGET e'
     p[0] = ('e', code)
 
 def p_divide(p):
@@ -489,7 +458,7 @@ def p_write(p):
         if p[2][1]:
             # to jest tablica
             #code += loadArrayToRegister(p[2][0][0], 'a', p[2][0][2], p.lexer.lineno-1, False)
-            code += loadArrayToRegister(p[2][0][0][0], 'a', p[2][0][2], p.lexer.lineno-1, False)
+            code += loadArrayToRegister(p[2][0][0][0], 'a', p[2][0][2], p.lexer.lineno-1, False) + 'WRITE\n'
         else:
             # to jest zmienna
             #code += loadVariableToRegister(p[2][0][0], 'a', p.lexer.lineno-1, False) + 'WRITE\n'
@@ -508,7 +477,6 @@ def p_value_id(p):
     #p[0] = (p[1], False)
     #p[0] = ((p[1],), False)
     p[0] = p[1]
-    #print("WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW: ", p[0])
 
 def p_identifier(p):
     'identifier : VARID'
@@ -537,7 +505,6 @@ with open(sys.argv[1], "r") as f:
 
 #try:
     compiled = parser.parse(programme, tracking=True)
-    #print(compiled)
     with open(sys.argv[2], "w") as file:
         file.write(compiled)
 #except Exception as ex:
