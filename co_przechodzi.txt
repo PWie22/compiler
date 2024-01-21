@@ -1,0 +1,11 @@
+example1.imp
+example2.imp
+example3.imp - przechodzi, ale są błędy w generowanym kodzie, konflikty rejestrów
+example4.imp
+example5.imp
+example6.imp - nie przechodzi, problem z whilem w linijce 330, bo warunek zwraca tuple
+example7.imp - nie przechodzi, bo jest problem z zagnieżdżonymi pętlami, linijka 329
+example8.imp
+example9.imp
+
+reszta zawiera procedury, więc na razie nie ma jak sprawdzić
