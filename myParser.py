@@ -253,6 +253,8 @@ def p_var_use(p):
     else:
         addSymbolToArray(p[1], False, 0, line)
 
+### COMMANDS ###
+
 def p_commands(p):
     '''commands : commands command
                 | command'''
@@ -323,8 +325,10 @@ def p_if_else_statement(p):
     commLen2 = len(p[6].split('\n'))
     if p[2] is tuple:
         # zastanowić się nad dodaniem dodatkowo condLen
-        code += p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code + 3) + p[2][2] + '{}\n'.format(curr_line_in_code + commLen1) + p[4] \
-                + 'JUMP {}\n'.format(curr_line_in_code + commLen1 + commLen2) + p[6]
+        #code += p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code + 3) + p[2][2] + '{}\n'.format(curr_line_in_code + commLen1) + p[4] \
+         #       + 'JUMP {}\n'.format(curr_line_in_code + commLen1 + commLen2) + p[6]
+        code += p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code - commLen1 - commLen2) + p[2][2] + '{}\n'.format(curr_line_in_code + 1) \
+              + 'JUMP {}\n'.format(curr_line_in_code-commLen2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 1) + p[6]
         curr_line_in_code += 6 + commLen1 + commLen2 + 1 # 6 to długość kodu dla tego warunku
     else:
         code += p[2] + '{}\n'.format(curr_line_in_code + commLen1) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + commLen1 + commLen2) + p[6]
@@ -336,18 +340,23 @@ def p_while_loop(p):
     'command : WHILE condition DO commands ENDWHILE'
     global curr_line_in_code
     code = ''
-    print(p[2])
-    condLen = len(p[2].split('\n'))
+    condLen = 0
     commLen = len(p[4].split('\n'))
     print("WHILE curr ", curr_line_in_code, " commlen ", commLen)
     # potrzebuję zapisać to, co jest w condition i commands, trzeba mieć adres skoku???
-    if p[2] is tuple:
+    #if p[2] is tuple:
+    if isinstance(p[2], tuple):
         #code += p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code + 3) + p[2][2] + '{}\n'.format(curr_line_in_code + 3 + commLen + 1) + p[4] \
                 #+ 'JUMP {}\n'.format(curr_line_in_code)
-        code += p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code - commLen + 2) + p[2][2] + '{}\n'.format(curr_line_in_code + 1) + p[4] \
-                + 'JUMP {}\n'.format(curr_line_in_code)
+        #condLen = len(p[2][0][1].split('\n')) + len(p[2][0][2].split('\n'))
+        addLen = len(p[2][0][0].split('\n'))
+        condLen = 6
+        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen + 2) + p[2][0][2] + '{}\n'.format(curr_line_in_code + 1) + p[4] \
+                + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen - addLen)
+        #+ 'JUMP {}\n'.format(curr_line_in_code)
         #curr_line_in_code += 6 + commLen + 1
     else:
+        condLen = len(p[2].split('\n'))
         print(" ", condLen)
         #code += p[2] + '{}\n'.format(curr_line_in_code + condLen + commLen) + p[4] + 'JUMP {}\n'.format(curr_line_in_code)
         code += p[2] + '{}\n'.format(curr_line_in_code + 2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen + 2)
@@ -357,15 +366,18 @@ def p_while_loop(p):
 
 def p_repeat_loop(p):
     'command : REPEAT commands UNTIL condition SEMICOLON'
-    # potrzebuję zapisać to, co mamay z commands i condition
     global curr_line_in_code
     code = ''
+    condLen = 0
     commLen = len(p[2].split('\n'))
-    if p[2] is tuple:
-        code += p[4] + p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code + 3 + 1) + 'JUMP {}\n'.format(curr_line_in_code) + p[2][2] \
-                + '{}\n'.format(curr_line_in_code + commLen + 6 + 2) + 'JUMP {}\n'.format(curr_line_in_code)
+    if p[4] is tuple:
+        condLen= len(p[4][1].split('\n')) + len(p[4][2].split('\n'))
+        code += p[2] + p[4][0] + p[4][1] + '{}\n'.format(curr_line_in_code - condLen - commLen) + p[4][2] \
+                + '{}\n'.format(curr_line_in_code + 1) + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen)
     else:
-        code += p[4] + p[2] + '{}\n'.format(curr_line_in_code + commLen + 1) + 'JUMP {}\n'.format(curr_line_in_code)
+        condLen = len(p[4].split('\n'))
+        code += p[2] + p[4] + '{}\n'.format(curr_line_in_code + 1) + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen)
+    curr_line_in_code += 1
     p[0] = code
 
 ### CONDITIONS ###
@@ -493,6 +505,7 @@ def p_modulo(p):
 
 def p_read(p):
     'command : READ identifier SEMICOLON'
+    global curr_line_in_code
     code = ''
     j = None
     for i in range(len(symbols_array)):
@@ -508,17 +521,17 @@ def p_read(p):
             if type(p[2][2]) is int:
                 #code += 'READ\n' + loadValueToRegister('b', symbols_array[j][3]+p[2][0][2]-1) + 'STORE b\n'
                 code += 'READ\n' + loadValueToRegister('b', symbols_array[j][3]+p[2][2]) + 'STORE b\n'
-                #curr_line_in_code += 2
+                curr_line_in_code += 2
             else:
                 code += 'READ\n' + loadVariableToRegister(p[2][2], 'a', p.lexer.lineno-1, False) + loadValueToRegister('b', symbols_array[j][3]) + 'ADD b\nDEC a\nPUT b\nREAD\nSTORE b\n'
-                #curr_line_in_code += 6
+                curr_line_in_code += 6
         else:
             # to jest zmienna
             if symbols_array[j][1]:
                 raise Exception("Error: Incorrect usage of array {} in line {}.".format(symbols_array[j][0], p.lexer.lineno-1))
             else:
                 code += 'READ\n' + loadValueToRegister('b', symbols_array[j][3]) + 'STORE b\n'
-            #curr_line_in_code += 2
+                curr_line_in_code += 2
         # zmienna jest zainicjowana, więc ustawiam wartość na True
                 symbols_array[j][4] = True
     p[0] = code
@@ -566,7 +579,6 @@ def p_identifier(p):
     'identifier : VARID'
     # w nawiasie podana jest najpierw nazwa zmiennej, a potem, czy jest tablicą
     #p[0] = (p[1], False)
-    global symbols_array
     p[0] = (((p[1], False),), False)
     
 def p_array_identifier(p):
