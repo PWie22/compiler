@@ -2,7 +2,7 @@
 import ply.lex as lex
 import sys
 
-tokens = ('NEWLINE', 'VARID', 'NUMBER',
+tokens = ('NEWLINE', 'COMMENT', 'VARID', 'NUMBER',
             'PLUS', 'MINUS', 'TIMES', 'DIVIDE', 'MOD',
             'ASSIGN', 'NEG', 'SQRPAREN', 'SQLPAREN', 'RPAREN', 'LPAREN',
             'EQUAL', 'LESS', 'LESSEQ', 'GREATER', 'GREATEREQ',
@@ -14,7 +14,7 @@ tokens = ('NEWLINE', 'VARID', 'NUMBER',
             'IS', 'IN', 'END', 'SEMICOLON', 'COMMA', 'ARRAYSIGN')
 
 t_ignore = ' \t'
-t_ignore_comment = r'\#(.|\\)*\n'
+#t_ignore_comment = r'\#(.|\\)*\n'
 #t_NEWLINE = r'\n+'
 
 # identyfikator/nazwa deklarowanej zmiennej
@@ -27,6 +27,11 @@ def t_NUMBER(t):
 
 def t_NEWLINE(t):
     r'\n+'
+    t.lexer.lineno += 1
+    pass
+
+def t_COMMENT(t):
+    r'\#(.|\\)*\n'
     t.lexer.lineno += 1
     pass
 

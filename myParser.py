@@ -24,6 +24,7 @@ def addSymbolToArray(varName, ifArray, capacity, lineNumb):
     if j != None:
         print("Error: Redeclaration of variable {} in line {}.".format(varName, lineNumb))
     else:
+        print("ifArray: ", ifArray)
         symbols_array.append([varName, ifArray, capacity, first_free_mem_index, False])
         #print(symbols_array[len(symbols_array)-1])
         if ifArray:
@@ -56,14 +57,19 @@ def loadVariableToRegister(varName, regName, lineNumb, onlyAddress):
             j = i
     if j == None:
         raise Exception("Error: Usage of undeclared variable {} in line {}.".format(varName, lineNumb))
+    elif symbols_array[j][1]:
+        raise Exception("Error: Incorrect usage of array {} in line {}.".format(varName, lineNumb))
     else:
         #code += self.loadValueToRegister(regName, symbols_array[j][3])
         #code += loadValueToRegister('b', symbols_array[j][3]) + 'LOAD b\nPUT {}\n'.format(regName)
         #print('gdzie indziej: ', symbols_array[j][3], " ", symbols_array[j])
         code += loadValueToRegister('b', symbols_array[j][3])
+        #code += loadValueToRegister(regName, symbols_array[j][3])
         if not onlyAddress:
             code += 'LOAD b\nPUT {}\n'.format(regName)
             curr_line_in_code += 2
+        #code += 'PUT {}\n'.format(regName)
+        #curr_line_in_code += 1
         return code
 
 # można by to zrobić wyżej, ale tablica może być indeksowana zmienną, więc wygodniej będzie zrobić osobną funkcję
@@ -81,10 +87,11 @@ def loadArrayToRegister(arrName, regName, index, lineNumb, onlyAddress):
         if type(index) is int:
             # tablica indeksowana liczbą
             #code += loadValueToRegister('b', symbols_array[j][3]+index-1) + 'LOAD b\nPUT {}'.format(regName)
-            code += loadValueToRegister('b', symbols_array[j][3]+index)
+            code += loadValueToRegister('b', symbols_array[j][3]+index-1)
         else:
             # tablica indeksowana zmienną
             #code += loadVariableToRegister(index, 'c', lineNumb) + loadValueToRegister('a', symbols_array[j][3]) + 'ADD c\nDEC a\nPUT b\nLOAD b\nPUT {}\n'.format(regName)
+            print("index: ", index)
             code += loadVariableToRegister(index, 'c', lineNumb, False) + loadValueToRegister('a', symbols_array[j][3]) + 'ADD c\nDEC a\nPUT b\n'
             curr_line_in_code += 3
         if not onlyAddress:
@@ -197,10 +204,10 @@ def p_proc_call(p):
         raise Exception("Error: Calling unexisting procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
     else:
         line_of_call = p.lineno
-        if line_of_call < procedures_list[j][1]:
+        #if line_of_call < procedures_list[j][1]:
             # ten przypadek chyba nie zajdzie, bo przed zadeklarowaniem procedury nie ma jej w procedures_list
-            raise Exception("Error: Calling procedure {} in line {} before it is declared.".format(p[1], p.lexer.lineno-1))
-        elif line_of_call > procedures_list[j][1] and line_of_call < procedures_list[j][2]:
+            #raise Exception("Error: Calling procedure {} in line {} before it is declared.".format(p[1], p.lexer.lineno-1))
+        if line_of_call > procedures_list[j][1] and line_of_call < procedures_list[j][2]:
             raise Exception("Error: Recursive call of procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
         else:
             print()
@@ -229,6 +236,7 @@ def p_array_use(p):
     '''declarations : declarations COMMA VARID SQLPAREN NUMBER SQRPAREN
                     | VARID SQLPAREN NUMBER SQRPAREN'''
     line = p.lexer.lineno-1 # numer linii, w której jest dopasowany tekst
+    print("dodawanie tablicy...")
     if len(p) == 7:
         addSymbolToArray(p[3], True, int(p[5]), line)
     else:
@@ -238,6 +246,7 @@ def p_var_use(p):
     '''declarations : declarations COMMA VARID
                     | VARID'''
     line = p.lexer.lineno-1
+    print("dodawanie zmiennej...")
     #if p[1] != None:
     if len(p) == 4:
         addSymbolToArray(p[3], False, 0, line)
@@ -276,6 +285,7 @@ def p_assign(p):
             code += p[3][1] + loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1, True) + 'GET {}\nSTORE b\n'.format(p[3][0])
         else:
             # to jest liczba, zmienna albo element tablicy
+            print("Coś jest nie tak: ", p[3][0])
             code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, True) + loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1, True) + 'GET c\nSTORE b\n'
         curr_line_in_code += 2
         p[0] = code
@@ -318,7 +328,7 @@ def p_if_else_statement(p):
         curr_line_in_code += 6 + commLen1 + commLen2 + 1 # 6 to długość kodu dla tego warunku
     else:
         code += p[2] + '{}\n'.format(curr_line_in_code + commLen1) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + commLen1 + commLen2) + p[6]
-        curr_line_in_code += commLen1 + commLen2
+        #curr_line_in_code += commLen1 + commLen2
     #p[0] = p[2] + p[4] + p[6]
     p[0] = code
 
@@ -326,6 +336,7 @@ def p_while_loop(p):
     'command : WHILE condition DO commands ENDWHILE'
     global curr_line_in_code
     code = ''
+    print(p[2])
     condLen = len(p[2].split('\n'))
     commLen = len(p[4].split('\n'))
     print("WHILE curr ", curr_line_in_code, " commlen ", commLen)
@@ -339,7 +350,7 @@ def p_while_loop(p):
     else:
         print(" ", condLen)
         #code += p[2] + '{}\n'.format(curr_line_in_code + condLen + commLen) + p[4] + 'JUMP {}\n'.format(curr_line_in_code)
-        code += p[2] + '{}\n'.format(curr_line_in_code + 2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code- condLen - commLen + 2)
+        code += p[2] + '{}\n'.format(curr_line_in_code + 2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen + 2)
         #curr_line_in_code += condLen + commLen + 1
     curr_line_in_code += 1
     p[0] = code
@@ -354,7 +365,6 @@ def p_repeat_loop(p):
         code += p[4] + p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code + 3 + 1) + 'JUMP {}\n'.format(curr_line_in_code) + p[2][2] \
                 + '{}\n'.format(curr_line_in_code + commLen + 6 + 2) + 'JUMP {}\n'.format(curr_line_in_code)
     else:
-        print()
         code += p[4] + p[2] + '{}\n'.format(curr_line_in_code + commLen + 1) + 'JUMP {}\n'.format(curr_line_in_code)
     p[0] = code
 
@@ -363,16 +373,18 @@ def p_repeat_loop(p):
 def p_equal(p):
     'condition : value EQUAL value'
     global curr_line_in_code
-    code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], False)
-    code += 'GET b\nSUB d\nPUT c\nGET d\nSUB b\nADD c\nJPOS '
+    #code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], False)
+    code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], False)
+    code += 'GET c\nSUB d\nPUT e\nGET d\nSUB c\nADD e\nJPOS '
     curr_line_in_code += 7
     p[0] = code
     
 def p_negation(p):
     'condition : value NEG value'
     global curr_line_in_code
-    code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], False)
-    code += 'GET b\nSUB d\nPUT c\nGET d\nSUB b\nADD c\nJZERO '
+    #code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], False)
+    code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], False)
+    code += 'GET c\nSUB d\nPUT e\nGET d\nSUB c\nADD e\nJZERO '
     curr_line_in_code += 7
     p[0] = code
 
@@ -382,10 +394,12 @@ def p_greater_less(p):
     global curr_line_in_code
     code = ''
     if p[2] == ">":
-        code += loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1, False)
+        #code += loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1, False)
+        code += loadValuesToRegs([p[1], p[3]], ['c', 'd'], p.lexer.lineno-1, False)
     else:
-        code += loadValuesToRegs([p[1], p[3]], ['d', 'b'], p.lexer.lineno-1, False)
-    code += 'GET b\nSUB d\nJZERO '
+        #code += loadValuesToRegs([p[1], p[3]], ['d', 'b'], p.lexer.lineno-1, False)
+        code += loadValuesToRegs([p[1], p[3]], ['d', 'c'], p.lexer.lineno-1, False)
+    code += 'GET c\nSUB d\nJZERO '
     curr_line_in_code += 3
     p[0] = code
 
@@ -396,10 +410,12 @@ def p_greater_less_equal(p):
     code = ''
     # te dwa rodzaje warunków są takie same, są własną odwrotnością, wystarczy wstawić wartości do rejestrów odwrotnie
     if p[2] == ">=":
-        code += loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno, False)
+        #code += loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1, False)
+        code += loadValuesToRegs([p[1], p[3]], ['c', 'd'], p.lexer.lineno-1, False)
     else:
-        code += loadValuesToRegs([p[1], p[3]], ['d', 'b'], p.lexer.lineno, False)
-    p[0] = ((code, 'GET b\nSUB d\nJPOS ', 'GET d\nSUB b\nJPOS '),)
+        #code += loadValuesToRegs([p[1], p[3]], ['d', 'b'], p.lexer.lineno-1, False)
+        code += loadValuesToRegs([p[1], p[3]], ['d', 'c'], p.lexer.lineno-1, False)
+    p[0] = ((code, 'GET c\nSUB d\nJPOS ', 'GET d\nSUB c\nJPOS '),)
     curr_line_in_code += 6
 
 ### EXPRESSIONS ###
@@ -412,40 +428,68 @@ def p_add_sub(p):
     '''expression : value PLUS value
                     | value MINUS value'''
     global curr_line_in_code
-    code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1, False)
+    #code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1, False)
+    code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], p.lexer.lineno-1, False)
     if p[2] == '+':
-        code += 'GET b\nADD d\nPUT f\n'
+        code += 'GET c\nADD d\nPUT e\n'
     else:
-        code += 'GET b\nSUB d\nPUT f\n'
+        code += 'GET c\nSUB d\nPUT e\n'
     curr_line_in_code += 3
-    p[0] = ('f', code)
+    p[0] = ('e', code)
 
 def p_multiply(p):
     'expression : value TIMES value'
-    code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], False)
+    global curr_line_in_code
+    currLi = curr_line_in_code
+    #code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1, False)
+    code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], p.lexer.lineno-1, False)
     #code += 'RST c\nGET b\nSUB d\nJPOS  \nGET b\nPUT e\nSHR e\nSHL e\nGET d\nSUB e\nJPOS  \n \nGET d\nPUT e\nSHR e\nSHL e\nGET d\nSUB e\nJPOS  \n'
     #code += 'RST e\nGET d\nSHR a\nSHL a\nPUT c\nGET d\nSUB c\nJZERO \nGET e\nADD b\nPUT e\nSHL b\nSHR d\nGET d\nJPOS \n'
-    code += 'RST e\nGET b\nJZERO \nGET d\nJZERO \nPUT c\nSHR c\nSHL c\nSUB c\nJPOS \nSHL b\nSHR d\nJUMP \nGET e\nADD b\nPUT e\nJUMP \nGET e'
-    p[0] = ('e', code)
+    # pierwszy i drugi skok na koniec mnożenia, trzeci do mnożenia, bo druga liczba jest nieparzysta, czwarty i piąty do sprawdzenia,
+    # czy druga liczba nie jest już równa 0
+    #code += 'RST f\nGET b\nJZERO {}\nGET d\nJZERO {}\nPUT c\nSHR c\nSHL c\nSUB c\nJPOS {}\nSHL b\nSHR d\nJUMP {}\nGET f\nADD b\n\
+     #   PUT f\nDEC d\nJUMP {}\nGET f'.format(currLi+17, currLi+17, currLi+14, currLi+4, currLi+4)
+    code += 'RST f\nGET c\nJZERO {}\nGET d\nJZERO {}\nPUT e\nSHR e\nSHL e\nSUB e\nJPOS {}\nSHL c\nSHR d\nJUMP {}\nGET f\nADD c\n\
+        PUT f\nDEC d\nJUMP {}\nGET f'.format(currLi+17, currLi+17, currLi+14, currLi+4, currLi+4)
+    curr_line_in_code += 18
+    p[0] = ('f', code)
 
 def p_divide(p):
     'expression : value DIVIDE value'
-    code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], False)
+    global curr_line_in_code
+    currLi = curr_line_in_code
+    #code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1, False)
+    code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], p.lexer.lineno-1, False)
     #code += 'RST c\nRST f\nGET d\nPUT e\nSHL e\nGET b\nJZERO  \nSUB e\nJZERO  \nINC c\nJUMP  \nGET e\nJZERO  \nSUB b\nJZERO  \nSHL c\nGET c\nADD f\nPUT f\nRST c\
         #\nSHR e\nGET b\nSUB e\nSHL a\nPUT e\nJUMP  \n'
-    #code += 'RST e\nRST c\nGET d\nPUT c\nGET b\nSUB c\nJZERO 9\nINC e\nJPOS \nGET c\nSUB b\nJPOS \nINC e\nJUMP \nSHL c\nGET b\nSUB c\
+    #code += 'RST e\nGET d\nJZERO {}\nGET b\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB b\nJPOS {}\nINC e\nJUMP {}\nRST f\nINC f\nGET d\nPUT c\nSHL c\n\
+     #   SHL f\nGET b\nSUB c\nJPOS {}\nGET c\nSUB b\nJZERO {}\nSHR f\nGET e\nADD f\nPUT e\nSHR c\nGET b\nSUB c\nPUT b\nJUMP {}\nGET e\nADD f\nPUT e\n\
+      #  GET e\n'.format(currLi+37, currLi+37, currLi+13, currLi+37, currLi+37, currLi+17, currLi+34, currLi+4)
+    code += 'RST f\nGET d\nJZERO {}\nGET c\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB c\nJPOS {}\nINC f\nJUMP {}\nRST g\nINC g\nGET d\nPUT e\nSHL e\n\
+        SHL g\nGET c\nSUB e\nJPOS {}\nGET e\nSUB c\nJZERO {}\nSHR g\nGET f\nADD g\nPUT f\nSHR e\nGET c\nSUB e\nPUT c\nJUMP {}\nGET f\nADD g\nPUT f\n\
+        GET f\n'.format(currLi+37, currLi+37, currLi+13, currLi+37, currLi+37, currLi+17, currLi+34, currLi+4)
+
+        #INC e\nJPOS \nGET c\nSUB b\nJPOS \nINC e\nJUMP \nSHL c\nGET b\nSUB c\
         #\nJZERO \nINC e\nINC e\nJPOS\nSHR c\nGET b\nSUB c\nPUT b\nJUMP \n'
-    code += 'GET d\nPUT e\nGET b\nPUT c\nGET b\nJZERO \nGET d\nJZERO \nGET b\nSUB e\nPUT b\nGET c\nSUB d\nADD b\nJZERO \nGET d\nSUB c\nJZERO \nJUMP \nRST g\n\
-        JUMP \nRST g\nINC g\nJUMP \nGET d\nPUT b\nGET c\nPUT e\nRST g\nRST f\nINC f\nGET e\nJZERO \nSHR e\nSHR b\nJUMP \nGET c\nPUT e\nGET b\nJZERO \n\
-        SHR b\nSHL e\nINC f\nJUMP \nGET d\nPUT b\nGET f\nJZERO \nINC b\n GET b\nSUB d\nPUT b\nJZERO \nDEC b\nDEC f\nSHL g\nINC g\nSHR e\nGET b\nPUT d\n\
-        JUMP \nGET d\nPUT b\nSHL g\nDEC f\nSHR e\nJUMP \nGET g\n'
+    #code += 'RST g\nGET d\nPUT e\nGET b\nPUT c\nGET b\nJZERO \nGET d\nJZERO \nGET b\nSUB e\nPUT b\nGET c\nSUB d\nADD b\nJZERO \nGET d\nSUB c\nJZERO \nJUMP \nRST g\n\
+     #   JUMP \nRST g\nINC g\nJUMP \nGET d\nPUT b\nGET c\nPUT e\nRST g\nRST f\nINC f\nGET e\nJZERO \nSHR e\nSHR b\nJUMP \nGET c\nPUT e\nGET b\nJZERO \n\
+      #  SHR b\nSHL e\nINC f\nJUMP \nGET d\nPUT b\nGET f\nJZERO \nINC b\n GET b\nSUB d\nPUT b\nJZERO \nDEC b\nDEC f\nSHL g\nINC g\nSHR e\nGET b\nPUT d\n\
+       # JUMP \nGET d\nPUT b\nSHL g\nDEC f\nSHR e\nJUMP \nGET g\n'
+    curr_line_in_code += 37
     p[0] = ('g', code)
 
 def p_modulo(p):
     'expression : value MOD value'
-    code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], False)
-    code += 'RST e\n'
-    p[0] = ('e', code)
+    global curr_line_in_code
+    currLi = curr_line_in_code
+    #code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1, False)
+    code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], p.lexer.lineno-1, False)
+    #code += 'GET d\nJZERO {}\nGET b\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB b\nJZERO {}\nGET b\nJUMP {}\nGET d\nPUT c\nSHL c\nGET b\nSUB c\nJPOS {}\nGET c\nSUB b\n\
+     #   JZERO {}\nSHR c\nGET b\nSUB c\nPUT b\nSUB c\nJPOS {}\nGET b\n'.format(currLi+27, currLi+27, currLi+12, currLi+27, currLi+27, currLi+12, currLi+27, currLi+12)
+    code += 'GET d\nJZERO {}\nGET c\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB c\nJZERO {}\nGET c\nJUMP {}\nGET d\nPUT e\nSHL c\nGET c\nSUB e\nJPOS {}\nGET e\nSUB c\n\
+        JZERO {}\nSHR e\nGET c\nSUB e\nPUT c\nSUB e\nJPOS {}\nGET c\n'.format(currLi+27, currLi+27, currLi+12, currLi+27, currLi+27, currLi+12, currLi+27, currLi+12)
+    curr_line_in_code += 27
+    p[0] = ('a', code)
 
 def p_read(p):
     'command : READ identifier SEMICOLON'
@@ -464,13 +508,19 @@ def p_read(p):
             if type(p[2][2]) is int:
                 #code += 'READ\n' + loadValueToRegister('b', symbols_array[j][3]+p[2][0][2]-1) + 'STORE b\n'
                 code += 'READ\n' + loadValueToRegister('b', symbols_array[j][3]+p[2][2]) + 'STORE b\n'
+                #curr_line_in_code += 2
             else:
                 code += 'READ\n' + loadVariableToRegister(p[2][2], 'a', p.lexer.lineno-1, False) + loadValueToRegister('b', symbols_array[j][3]) + 'ADD b\nDEC a\nPUT b\nREAD\nSTORE b\n'
+                #curr_line_in_code += 6
         else:
             # to jest zmienna
-            code += 'READ\n' + loadValueToRegister('b', symbols_array[j][3]) + 'STORE b\n'
+            if symbols_array[j][1]:
+                raise Exception("Error: Incorrect usage of array {} in line {}.".format(symbols_array[j][0], p.lexer.lineno-1))
+            else:
+                code += 'READ\n' + loadValueToRegister('b', symbols_array[j][3]) + 'STORE b\n'
+            #curr_line_in_code += 2
         # zmienna jest zainicjowana, więc ustawiam wartość na True
-        symbols_array[j][4] = True
+                symbols_array[j][4] = True
     p[0] = code
 
 def p_write(p):
@@ -488,11 +538,15 @@ def p_write(p):
         if p[2][1]:
             # to jest tablica
             #code += loadArrayToRegister(p[2][0][0], 'a', p[2][0][2], p.lexer.lineno-1, False)
-            code += loadArrayToRegister(p[2][0][0][0], 'a', p[2][0][2], p.lexer.lineno-1, False) + 'WRITE\n'
+            #code += loadArrayToRegister(p[2][0][0][0], 'a', p[2][0][2], p.lexer.lineno-1, False) + 'WRITE\n'
+            print("index: ", p[2][0][0][0])
+            code += loadArrayToRegister(p[2][0][0][0], 'a', p[2][2], p.lexer.lineno-1, False) + 'WRITE\n'
         else:
             # to jest zmienna
             #code += loadVariableToRegister(p[2][0][0], 'a', p.lexer.lineno-1, False) + 'WRITE\n'
+            print("index: ", p[2][0][0][0])
             code += loadVariableToRegister(p[2][0][0][0], 'a', p.lexer.lineno-1, False) + 'WRITE\n'
+    #curr_line_in_code += 1
     p[0] = code
 
 def p_value_numb(p):
@@ -512,6 +566,7 @@ def p_identifier(p):
     'identifier : VARID'
     # w nawiasie podana jest najpierw nazwa zmiennej, a potem, czy jest tablicą
     #p[0] = (p[1], False)
+    global symbols_array
     p[0] = (((p[1], False),), False)
     
 def p_array_identifier(p):
