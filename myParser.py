@@ -3,7 +3,7 @@ import ply.yacc as yacc
 from myLexer import build_lexer, tokens
 import sys
 
-# ta tablica będzie zawierać wszystkie zadeklarowane symbole w postaci: (nazwa_symbolu, czy_tablica, pojemność_tablicy, miejsce_w_pamięci, czy_zainicjowana)
+# ta tablica będzie zawierać wszystkie zadeklarowane symbole w postaci: (nazwa_symbolu, czy_tablica, pojemność_tablicy, miejsce_w_pamięci, czy_zainicjowana, nazwa_procedury)
 # nazwa_procedury tylko, jeżeli zmienna pochodzi z procedury; jeszcze musi być adres pamięci
 symbols_array = []
 # każdy element procedures_list będzie postaci (nazwa_procedury, gdzie_początek, gdzie_koniec, adres_assemblerowy) - main też musi być tu dodany
@@ -11,21 +11,27 @@ procedures_list = []
 first_free_mem_index = 0
 # curr_line_in_code - obecna linijka w generowanym kodzie, czy to zadziała???
 curr_line_in_code = 0
+# isinprocedure - zmienna, która jest wykorzystywana, żeby dobrze dodać zmienne procedury i maina do tablicy symboli
+currProcedure = None
+# temp_arr to tablica na dodanie symboli z nawiasu procedury, żeby sprawdzić, czy nie powtarzają symboli
+temp_arr = []
+# decl_arr to tablica na przechowanie zmiennych własnych procedury
+decl_arr = []
 
 ### SECTION FOR ALL FUNCTIONS NECESARRY FOR THE PARSER ###
 
 # funkcja dodająca nową nazwę zmiennej do zbioru już zadeklarowanych zmiennych
-def addSymbolToArray(varName, ifArray, capacity, lineNumb):
+def addSymbolToArray(varName, ifArray, capacity, lineNumb, currProc):
     global symbols_array, first_free_mem_index
     j = None
     for i in range(len(symbols_array)):
-        if symbols_array[i][0] == varName:
+        if symbols_array[i][0] == varName and symbols_array[i][5] == currProc:
             j = i
     if j != None:
         print("Error: Redeclaration of variable {} in line {}.".format(varName, lineNumb))
     else:
         print("ifArray: ", ifArray)
-        symbols_array.append([varName, ifArray, capacity, first_free_mem_index, False])
+        symbols_array.append([varName, ifArray, capacity, first_free_mem_index, False, currProc])
         #print(symbols_array[len(symbols_array)-1])
         if ifArray:
             first_free_mem_index += capacity
@@ -44,6 +50,7 @@ def loadValueToRegister(regName, value):
             value -= 1
     code = 'RST {}\n'.format(regName) + code
     curr_line_in_code += len(code.split('\n'))-1
+    print("dodawanie ", len(code.split('\n'))-1)
     return code
 
 def loadVariableToRegister(varName, regName, lineNumb, onlyAddress):
@@ -67,6 +74,7 @@ def loadVariableToRegister(varName, regName, lineNumb, onlyAddress):
         #code += loadValueToRegister(regName, symbols_array[j][3])
         if not onlyAddress:
             code += 'LOAD b\nPUT {}\n'.format(regName)
+            print("dodawanie 2")
             curr_line_in_code += 2
         #code += 'PUT {}\n'.format(regName)
         #curr_line_in_code += 1
@@ -159,26 +167,38 @@ def p_procedures(p):
     '''procedures : procedures PROCEDURE proc_head IS declarations IN commands END
                     | procedures PROCEDURE proc_head IS IN commands END
                     |'''
-    global procedures_list
+    global procedures_list, currProcedure, temp_arr, decl_arr
     if (len(p) == 1):
         print("okej")
+        currProcedure = None
     elif (len(p) == 9):
-        #p[0] = p[1] + p[7] + 'HALT'
-        #procedures_list[len(procedures_list)-1][2] = p.parser.token_slice[p.slice[8]].lineno
-        proc_address = len(p[1].split('\n')) + 1
-        procedures_list.append(p[3][0], p[3][1], p.parser.token_slice[p.slice[8]].lineno, proc_address)
-        # chyba jeszcze gdzieś na początku musi być jakiś jump do linijki, w której zaczyna się program
-        p[0] = p[7]
+        j = None
+        for i in len(temp_arr):
+            if temp_arr[i][0] in p[5]:
+                j = i
+        if j is not None:
+            raise Exception("Error: Redeclaration of variable {} in procedure {} in line {}.".format(temp_arr[j][0]))
+        else:
+            #p[0] = p[1] + p[7] + 'HALT'
+            #procedures_list[len(procedures_list)-1][2] = p.parser.token_slice[p.slice[8]].lineno
+            #currProcedure = p[3][0]
+            proc_address = len(p[1].split('\n')) + 1
+            procedures_list.append(p[3][0], p[3][1], p.parser.token_slice[p.slice[8]].lineno, proc_address)
+            # chyba jeszcze gdzieś na początku musi być jakiś jump do linijki, w której zaczyna się program
+            temp_arr = []
+            decl_arr = []
+            p[0] = p[7]
     else:
         #p[0] = p[1] + p[6] + 'HALT'
         #procedures_list[len(procedures_list)-1][2] = p.parser.token_slice[p.slice[7]].lineno
+        #currProcedure = p[3][0]
         proc_address = len(p[1].split('\n')) + 1
         procedures_list.append(p[3][0], p[3][1], p.parser.token_slice[p.slice[7]].lineno, proc_address)
         p[0] = p[6]
 
 def p_proc_head(p):
     'proc_head : VARID LPAREN args_decl RPAREN'
-    global procedures_list
+    global procedures_list, currProcedure
     j = None
     for i in range(len(procedures_list)):
         if procedures_list[i][0] == p[1]:
@@ -186,16 +206,18 @@ def p_proc_head(p):
     if j != None:
         raise Exception("Error: Redaclaration of procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
     else:
-        #procedures_list.append([p[1], p.lineno, 0])
-        p[0] = (p[1], p.lineno)
+        #procedures_list.append([p[1], p.lineno, 0]); w p[3] będą zapisywane nazwy i typy zmiennych wejściowych procedury
+        currProcedure = p[1]
+        p[0] = (p[1], p.lineno, p[3])
 
 def p_command_proc_call(p):
     'command : proc_call SEMICOLON'
     # tutaj trzeba napisać kod wywołania procedury
+    # na koniec nie zapomnieć o ustawieniu currProc na None
 
 def p_proc_call(p):
     'proc_call : VARID LPAREN args RPAREN'
-    global procedures_list
+    global procedures_list, currProcedure
     j = -1
     for i in range(len(procedures_list)):
         if procedures_list[i][0] == p[1]:
@@ -211,8 +233,10 @@ def p_proc_call(p):
             raise Exception("Error: Recursive call of procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
         else:
             print()
+            currProcedure = p[1]
             # tutaj trzeba dodać skok do miejsca, w którym zaczyna się procedura - ale p.lexer.lineno daje nam linijkę w kodzie,
             # więc trzeba jakoś inaczej znaleźć adres skoku
+            # trzeba jeszcze dodać zmianę zmiennej currProcedure na p[1]???
     # teraz chyba trzeba dodać else, żeby dodać jump???
 
 # w args_decl są deklarowane nazwy zmiennych procedury
@@ -221,10 +245,15 @@ def p_proc_call(p):
 def p_array_proc_decl(p):
     '''args_decl : args_decl COMMA ARRAYSIGN VARID
                     | ARRAYSIGN VARID'''
+    global temp_arr
+    # pierwsza wartość to nazwa, a druga to, że jest tablicą
+    temp_arr.append([p[4], True])
     
 def p_var_proc_decl(p):
     '''args_decl : args_decl COMMA VARID
                     | VARID'''
+    global temp_arr
+    temp_arr.append([p[3], False])
 
 def p_args_proc(p):
     '''args : args COMMA VARID
@@ -236,22 +265,25 @@ def p_array_use(p):
     '''declarations : declarations COMMA VARID SQLPAREN NUMBER SQRPAREN
                     | VARID SQLPAREN NUMBER SQRPAREN'''
     line = p.lexer.lineno-1 # numer linii, w której jest dopasowany tekst
-    print("dodawanie tablicy...")
     if len(p) == 7:
-        addSymbolToArray(p[3], True, int(p[5]), line)
+        addSymbolToArray(p[3], True, int(p[5]), line, currProcedure)
+        decl_arr.append(p[3])
     else:
-        addSymbolToArray(p[1], True, int(p[3]), line)
+        addSymbolToArray(p[1], True, int(p[3]), line, currProcedure)
+        decl_arr.append(p[1])
     
 def p_var_use(p):
     '''declarations : declarations COMMA VARID
                     | VARID'''
+    global decl_arr
     line = p.lexer.lineno-1
-    print("dodawanie zmiennej...")
     #if p[1] != None:
     if len(p) == 4:
-        addSymbolToArray(p[3], False, 0, line)
+        addSymbolToArray(p[3], False, 0, line, currProcedure)
+        decl_arr.append(p[3])
     else:
-        addSymbolToArray(p[1], False, 0, line)
+        addSymbolToArray(p[1], False, 0, line, currProcedure)
+        decl_arr.append(p[1])
 
 ### COMMANDS ###
 
@@ -310,7 +342,7 @@ def p_if_statement(p):
         # w warunku nie ma >= ani <=
         #code += p[2] + '{}\n'.format(curr_line_in_code + commLen) - w curr_line_in_code już jest zawarte commLen
         code += p[2] + '{}\n'.format(curr_line_in_code + 1)
-        condLen = len(p[2].split('\n'))
+        #condLen = len(p[2].split('\n'))
         #curr_line_in_code += condLen + commLen
     #p[0] = p[2] + p[4]
     p[0] = code + p[4]
@@ -329,10 +361,11 @@ def p_if_else_statement(p):
          #       + 'JUMP {}\n'.format(curr_line_in_code + commLen1 + commLen2) + p[6]
         code += p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code - commLen1 - commLen2) + p[2][2] + '{}\n'.format(curr_line_in_code + 1) \
               + 'JUMP {}\n'.format(curr_line_in_code-commLen2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 1) + p[6]
-        curr_line_in_code += 6 + commLen1 + commLen2 + 1 # 6 to długość kodu dla tego warunku
+        curr_line_in_code += 6 #commLen1 + commLen2 + 1 # 6 to długość kodu dla tego warunku
     else:
         code += p[2] + '{}\n'.format(curr_line_in_code + commLen1) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + commLen1 + commLen2) + p[6]
         #curr_line_in_code += commLen1 + commLen2
+        curr_line_in_code += 1
     #p[0] = p[2] + p[4] + p[6]
     p[0] = code
 
@@ -370,13 +403,16 @@ def p_repeat_loop(p):
     code = ''
     condLen = 0
     commLen = len(p[2].split('\n'))
-    if p[4] is tuple:
+    print("curr line: ", curr_line_in_code)
+    #if p[4] is tuple:
+    if isinstance(p[4], tuple):
         condLen= len(p[4][1].split('\n')) + len(p[4][2].split('\n'))
         code += p[2] + p[4][0] + p[4][1] + '{}\n'.format(curr_line_in_code - condLen - commLen) + p[4][2] \
                 + '{}\n'.format(curr_line_in_code + 1) + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen)
     else:
         condLen = len(p[4].split('\n'))
-        code += p[2] + p[4] + '{}\n'.format(curr_line_in_code + 1) + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen)
+        print("cond: ", condLen, " comm: ", commLen)
+        code += p[2] + p[4] + '{}\n'.format(curr_line_in_code + 3) + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen + 3)
     curr_line_in_code += 1
     p[0] = code
 
@@ -386,7 +422,7 @@ def p_equal(p):
     'condition : value EQUAL value'
     global curr_line_in_code
     #code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], False)
-    code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], False)
+    code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], p.lexer.lineno-1, False)
     code += 'GET c\nSUB d\nPUT e\nGET d\nSUB c\nADD e\nJPOS '
     curr_line_in_code += 7
     p[0] = code
@@ -452,34 +488,36 @@ def p_add_sub(p):
 def p_multiply(p):
     'expression : value TIMES value'
     global curr_line_in_code
-    currLi = curr_line_in_code
     #code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1, False)
     code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], p.lexer.lineno-1, False)
+    currLi = curr_line_in_code
     #code += 'RST c\nGET b\nSUB d\nJPOS  \nGET b\nPUT e\nSHR e\nSHL e\nGET d\nSUB e\nJPOS  \n \nGET d\nPUT e\nSHR e\nSHL e\nGET d\nSUB e\nJPOS  \n'
     #code += 'RST e\nGET d\nSHR a\nSHL a\nPUT c\nGET d\nSUB c\nJZERO \nGET e\nADD b\nPUT e\nSHL b\nSHR d\nGET d\nJPOS \n'
     # pierwszy i drugi skok na koniec mnożenia, trzeci do mnożenia, bo druga liczba jest nieparzysta, czwarty i piąty do sprawdzenia,
     # czy druga liczba nie jest już równa 0
     #code += 'RST f\nGET b\nJZERO {}\nGET d\nJZERO {}\nPUT c\nSHR c\nSHL c\nSUB c\nJPOS {}\nSHL b\nSHR d\nJUMP {}\nGET f\nADD b\n\
      #   PUT f\nDEC d\nJUMP {}\nGET f'.format(currLi+17, currLi+17, currLi+14, currLi+4, currLi+4)
+    print("cccccc: ", currLi)
     code += 'RST f\nGET c\nJZERO {}\nGET d\nJZERO {}\nPUT e\nSHR e\nSHL e\nSUB e\nJPOS {}\nSHL c\nSHR d\nJUMP {}\nGET f\nADD c\n\
-        PUT f\nDEC d\nJUMP {}\nGET f'.format(currLi+17, currLi+17, currLi+14, currLi+4, currLi+4)
+PUT f\nDEC d\nJUMP {}\nGET f\n'.format(currLi+19, currLi+19, currLi+14, currLi+4, currLi+4)
     curr_line_in_code += 18
+    print("po mnożeniu ", curr_line_in_code)
     p[0] = ('f', code)
 
 def p_divide(p):
     'expression : value DIVIDE value'
     global curr_line_in_code
-    currLi = curr_line_in_code
     #code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1, False)
     code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], p.lexer.lineno-1, False)
+    currLi = curr_line_in_code
     #code += 'RST c\nRST f\nGET d\nPUT e\nSHL e\nGET b\nJZERO  \nSUB e\nJZERO  \nINC c\nJUMP  \nGET e\nJZERO  \nSUB b\nJZERO  \nSHL c\nGET c\nADD f\nPUT f\nRST c\
         #\nSHR e\nGET b\nSUB e\nSHL a\nPUT e\nJUMP  \n'
     #code += 'RST e\nGET d\nJZERO {}\nGET b\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB b\nJPOS {}\nINC e\nJUMP {}\nRST f\nINC f\nGET d\nPUT c\nSHL c\n\
      #   SHL f\nGET b\nSUB c\nJPOS {}\nGET c\nSUB b\nJZERO {}\nSHR f\nGET e\nADD f\nPUT e\nSHR c\nGET b\nSUB c\nPUT b\nJUMP {}\nGET e\nADD f\nPUT e\n\
       #  GET e\n'.format(currLi+37, currLi+37, currLi+13, currLi+37, currLi+37, currLi+17, currLi+34, currLi+4)
     code += 'RST f\nGET d\nJZERO {}\nGET c\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB c\nJPOS {}\nINC f\nJUMP {}\nRST g\nINC g\nGET d\nPUT e\nSHL e\n\
-        SHL g\nGET c\nSUB e\nJPOS {}\nGET e\nSUB c\nJZERO {}\nSHR g\nGET f\nADD g\nPUT f\nSHR e\nGET c\nSUB e\nPUT c\nJUMP {}\nGET f\nADD g\nPUT f\n\
-        GET f\n'.format(currLi+37, currLi+37, currLi+13, currLi+37, currLi+37, currLi+17, currLi+34, currLi+4)
+SHL g\nGET c\nSUB e\nJPOS {}\nGET e\nSUB c\nJZERO {}\nSHR g\nGET f\nADD g\nPUT f\nSHR e\nGET c\nSUB e\nPUT c\nJUMP {}\nGET f\nADD g\nPUT f\n\
+GET f\n'.format(currLi+37, currLi+37, currLi+13, currLi+37, currLi+37, currLi+17, currLi+34, currLi+4)
 
         #INC e\nJPOS \nGET c\nSUB b\nJPOS \nINC e\nJUMP \nSHL c\nGET b\nSUB c\
         #\nJZERO \nINC e\nINC e\nJPOS\nSHR c\nGET b\nSUB c\nPUT b\nJUMP \n'
@@ -488,19 +526,21 @@ def p_divide(p):
       #  SHR b\nSHL e\nINC f\nJUMP \nGET d\nPUT b\nGET f\nJZERO \nINC b\n GET b\nSUB d\nPUT b\nJZERO \nDEC b\nDEC f\nSHL g\nINC g\nSHR e\nGET b\nPUT d\n\
        # JUMP \nGET d\nPUT b\nSHL g\nDEC f\nSHR e\nJUMP \nGET g\n'
     curr_line_in_code += 37
+    print("po dzieleniu ", curr_line_in_code)
     p[0] = ('g', code)
 
 def p_modulo(p):
     'expression : value MOD value'
     global curr_line_in_code
-    currLi = curr_line_in_code
     #code = loadValuesToRegs([p[1], p[3]], ['b', 'd'], p.lexer.lineno-1, False)
     code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], p.lexer.lineno-1, False)
+    currLi = curr_line_in_code
     #code += 'GET d\nJZERO {}\nGET b\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB b\nJZERO {}\nGET b\nJUMP {}\nGET d\nPUT c\nSHL c\nGET b\nSUB c\nJPOS {}\nGET c\nSUB b\n\
      #   JZERO {}\nSHR c\nGET b\nSUB c\nPUT b\nSUB c\nJPOS {}\nGET b\n'.format(currLi+27, currLi+27, currLi+12, currLi+27, currLi+27, currLi+12, currLi+27, currLi+12)
     code += 'GET d\nJZERO {}\nGET c\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB c\nJZERO {}\nGET c\nJUMP {}\nGET d\nPUT e\nSHL c\nGET c\nSUB e\nJPOS {}\nGET e\nSUB c\n\
-        JZERO {}\nSHR e\nGET c\nSUB e\nPUT c\nSUB e\nJPOS {}\nGET c\n'.format(currLi+27, currLi+27, currLi+12, currLi+27, currLi+27, currLi+12, currLi+27, currLi+12)
+JZERO {}\nSHR e\nGET c\nSUB e\nPUT c\nSUB e\nJPOS {}\nGET c\n'.format(currLi+27, currLi+27, currLi+12, currLi+27, currLi+27, currLi+12, currLi+27, currLi+12)
     curr_line_in_code += 27
+    print("po modulo ", curr_line_in_code)
     p[0] = ('a', code)
 
 def p_read(p):
@@ -538,13 +578,16 @@ def p_read(p):
 
 def p_write(p):
     'command : WRITE value SEMICOLON'
+    global curr_line_in_code
     code = ''
     #if p[2][1]:
     #if p[2][0] is not tuple:
-    if not isinstance(p[2][0], tuple):
+    print(p[2][0][0])
+    #if not isinstance(p[2][0], tuple):
+    if p[2][0][0][1]:
         # to jest liczba
         #print(p[2], " ", type(p[2][0]))
-        code += loadValueToRegister('a', p[2][0]) + 'WRITE\n'
+        code += loadValueToRegister('a', p[2][0][0][0]) + 'WRITE\n'
     else:
         # to jest albo zmienna albo element tablicy
         #if p[2][0][1]:
@@ -559,7 +602,7 @@ def p_write(p):
             #code += loadVariableToRegister(p[2][0][0], 'a', p.lexer.lineno-1, False) + 'WRITE\n'
             print("index: ", p[2][0][0][0])
             code += loadVariableToRegister(p[2][0][0][0], 'a', p.lexer.lineno-1, False) + 'WRITE\n'
-    #curr_line_in_code += 1
+    curr_line_in_code += 1
     p[0] = code
 
 def p_value_numb(p):
