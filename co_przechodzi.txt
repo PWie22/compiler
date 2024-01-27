@@ -1,15 +1,32 @@
-example1.imp
-example2.imp
+example1.imp - kompiluje się, ale najprawdopodobniej są błędy
+example2.imp - wywala się, jak wchodzi do procedury pb, trzeba wyczyścić tablicę temp_arr przed jej użyciem chyba
 example3.imp - przechodzi, NADAL BŁĄD NA POCZĄTKU, BO NIE MA TAM PUT c, konfliktów rejestrów już raczej nie ma, chyba jest okej, ale trzeba przetestować na maszynie
-example4.imp
-example5.imp
+example4.imp - wywala się na drugiej procedurze, to samo, co w example2
+example5.imp - przechodzi, ale generowany kod jest pewnie zły
 example6.imp - przechodzi, ale źle są ustawiane adresy skoków, są też konflikty rejestrów - konfliktów już chyba nie ma
 example7.imp - przechodzi, chyba nie ma błędów, teraz trzeba przetestować na maszynie
-example8.imp
-example9.imp
+example8.imp - wywala się w linijce 296 w proc_call, jak już jest w głównym programie
+example9.imp - wywala się w procedurze bc na zmiennej ['n', False, 5], to samo, co w example9
 
-wszystkie programy, które mają procedury, zatrzymują się na p_assign, bo trzeba tam zmienić sprawdzanie, czy są zadeklarowane
+wszystkie programy, które mają procedury, zatrzymują się na loadValuesToRegs po tym, jak wejdą w p_assign i mają być załadowane do rejestrów, bo one są po prostu intami
+a nie tuplami
 
 program0.mr - kompiluje się, ale są bzdury, w dzieleniu i mnożeniu przeskakuje o jeden za mało, powinno przeskoczyć o 1 dalej
-program1.mr
-program2.mr
+program1.mr - wywala się w if else w linijce 502
+program2.mr - wywala się tam, gdzie example8
+
+error1.imp - wyświetla dobry błąd w dobrej linijce +++
+error2.imp - wyświetla odpowiedni błąd w dobrej linijce +++
+error3.imp - wyświetla odpowiedni błąd, ale o zmiennej po prawej stronie przypisania, która tak naprawdę jest tablicą, czy tak może być i czy nie ma gdzieś błędu w programie?
+error4.imp - wyświetla odpowiedni błąd, ale zamiast 12 linijki wyświetla 11 +/-
+error5.imp - wyświetla odpowiedni błąd, ale zamiast 13 linijki wyświetla 11 i chyba trzeba zmienić wyświetlany komunikat na bardziej ogólny
+error6.imp - wyświetla dobry błąd w dobrej linijce +++
+error7.imp - dobry błąd, ale zamiast 6 linijki wyświetlana jest 5 +/-
+error8.imp - dobry błąd, ale zamiast linijki 13 wyświetlana jest 11 +/-
+
+test0.imp - przechodzi, ale generowany kod pewnie zły
+test1.imp - przechodzi, ale generowany kod pewnie zły
+test2a.imp - przechodzi, bo najpierw w programie jest inicjalizacja zmiennej, dopiero potem jej wykorzystanie
+test2b.imp - przechodzi i jest wyświetlany warning
+test2c.imp - przechodzi, bo najpierw w programie jest inicjalizacja zmiennej, dopiero potem jej wykorzystanie
+test2d.imp - przechodzi i jest wyświetlany warning
