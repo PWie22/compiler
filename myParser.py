@@ -13,8 +13,10 @@ first_free_mem_index = 0
 curr_line_in_code = 0
 # isinprocedure - zmienna, która jest wykorzystywana, żeby dobrze dodać zmienne procedury i maina do tablicy symboli
 currProcedure = None
-# temp_arr to tablica na dodanie symboli z nawiasu procedury, żeby sprawdzić, czy nie powtarzają symboli, zarówno podczas deklarowania procedury, jak i jej wywoływania
+# temp_arr to tablica na dodanie symboli z nawiasu procedury, żeby sprawdzić, czy nie powtarzają symboli, podczas deklarowania procedury
 temp_arr = []
+# temp_arr2 to tablica na dodanie symboli z nawiasu procedury, gdy jest ona wywoływana
+temp_arr2 = []
 # decl_arr to tablica na przechowanie zmiennych własnych procedury
 decl_arr = []
 # howdeep to zmienna, która mówi, jak głęboko w pętlach i/lub ifach jesteśmy - jedno wejście do conditions zwiększa jej wartość o 1, a wyjście z pętli/ifa zmniejsza o 1
@@ -224,6 +226,7 @@ def p_procedures(p):
             temp_arr = []
             decl_arr = []
             code += loadValueToRegister('b', procedures_list[len(procedures_list)-1][5]) + 'LOAD b\nJUMPR a\n'
+            print("ustawiam na none 1")
             currProcedure = None
             p[0] = p[7] + code
     else:
@@ -233,6 +236,7 @@ def p_procedures(p):
         #proc_address = len(p[1].split('\n')) + 1
         temp_arr = []
         code += loadValueToRegister('b', procedures_list[len(procedures_list)-1][5]) + 'LOAD b\nJUMPR a\n'
+        print("ustawiam na none 2")
         currProcedure = None
         p[0] = p[6] + code
 
@@ -249,6 +253,7 @@ def p_proc_head(p):
         #procedures_list.append([p[1], p.lineno, 0]); w p[3] będą zapisywane nazwy i typy zmiennych wejściowych procedury
         procedures_list.append([p[1], p.lexer.lineno-1, 0, curr_line_in_code, temp_arr, first_free_mem_index])
         first_free_mem_index += 1
+        print("ustawiam na ", p[1])
         currProcedure = p[1]
         print("proce_head ", currProcedure)
         p[0] = (p[1], p.lineno)
@@ -259,11 +264,11 @@ def p_command_proc_call(p):
     # na koniec nie zapomnieć o ustawieniu currProc na None
     global currProcedure
     p[0] = p[1]
-    currProcedure = None
+    #currProcedure = None
 
 def p_proc_call(p):
     'proc_call : VARID LPAREN args RPAREN'
-    global procedures_list, currProcedure, symbols_array, curr_line_in_code, temp_arr
+    global procedures_list, currProcedure, symbols_array, curr_line_in_code, temp_arr, temp_arr2
     code = ''
     j = None
     for i in range(len(procedures_list)):
@@ -282,22 +287,40 @@ def p_proc_call(p):
             #raise Exception("Error: Recursive call in procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
         #else:
             m = None
-            for i in range(len(temp_arr)):
+            print("przed pętlą ", temp_arr2, " ", len(temp_arr2))
+            print("all proc: ", procedures_list, " ", currProcedure)
+            for i in range(len(temp_arr2)):
                 for k in range(len(symbols_array)):
-                    if temp_arr[i] == symbols_array[k][0]:
+                    if temp_arr2[i] == symbols_array[k][0]:
                         m = k
                         break
                 if m == None:
-                    print("jaka procedura: ", currProcedure)
-                    print("all symbols: ", symbols_array, " temp arr: ", temp_arr)
-                    raise Exception("Error: Usage of undeclared variable {} in procedure {} in line {}.".format(temp_arr[i], currProcedure, p.lexer.lineno-1))
+                    for n in range(len(temp_arr)):
+                        if temp_arr2[i] == temp_arr[n][0]:
+                            m = n
+                            break
+                    if m == None:
+                        print("jaka procedura: ", currProcedure)
+                        print("all symbols: ", symbols_array, " temp arr2: ", temp_arr2)
+                        raise Exception("Error: Usage of undeclared variable {} in procedure {} in line {}.".format(temp_arr2[i], currProcedure, p.lexer.lineno-1))
+                    else:
+                        procNumb = None
+                        for n in range(len(procedures_list)):
+                            if procedures_list[n][0] == currProcedure:
+                                procNumb = n
+                                break
+                        code += loadValueToRegister('b', procedures_list[procNumb][4][i][2]) + 'LOAD b\n' + loadValueToRegister('b', procedures_list[j][4][i][2]) + 'STORE b\n'
+                        curr_line_in_code += 2
+                        m = None
                 else: # symbol został wcześniej zadeklarowany i znajduje się w symbols_array
+                    print(procedures_list[j][4], " ", i)
                     if symbols_array[m][1] == procedures_list[j][4][i][1]: # typy się zgadzają
                         #comebackAdd = curr_line_in_code
-                        procedures_list[j][5] = curr_line_in_code
+                        #code += loadValueToRegister('b', procedures_list[j][5]) + loadValueToRegister('a', curr_line_in_code) + 'STORE b\n' # ładowanie adresu powrotu
                         symbols_array[m][4] = True # dodane, ponieważ można wywołać procedurę z parametrami, które były wcześniej tylko zadeklarowane, ale nie zainicjowane
                         code += loadValueToRegister('b', procedures_list[j][4][i][2]) + loadValueToRegister('a',symbols_array[m][3]) + 'STORE b\n'
-                        curr_line_in_code += 1
+                        # dodać adres skoku do procedury
+                        curr_line_in_code += 2
                         m = None
                     else: # typy się nie zgadzają
                         raise Exception("Error: Calling procedure {} with an argument ({}) of wrong type in line {}.".format(p[1], symbols_array[m][0], p.lexer.lineno-1))
@@ -306,6 +329,7 @@ def p_proc_call(p):
             # więc trzeba jakoś inaczej znaleźć adres skoku
             # trzeba jeszcze dodać zmianę zmiennej currProcedure na p[1]???
             p[0] = code
+    temp_arr2 = []
 
 # w args_decl są deklarowane nazwy zmiennych procedury
 # w args są podawane argumenty do procedury
@@ -334,11 +358,11 @@ def p_var_proc_decl(p):
 def p_args_proc(p):
     '''args : args COMMA VARID
             | VARID'''
-    global temp_arr
+    global temp_arr2
     if len(p) == 4:
-        temp_arr.append(p[3])
+        temp_arr2.append(p[3])
     else:
-        temp_arr.append(p[1])
+        temp_arr2.append(p[1])
     
 ### DECLARATIONS OF VARIABLES USED IN A FUNCTION ###
     
@@ -491,11 +515,12 @@ def p_if_else_statement(p):
     code = ''
     commLen1 = len(p[4].split('\n'))
     commLen2 = len(p[6].split('\n'))
-    if p[2] is tuple:
+    if isinstance(p[2], tuple):
+        print("p[2]: ", p[2])
         # zastanowić się nad dodaniem dodatkowo condLen
         #code += p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code + 3) + p[2][2] + '{}\n'.format(curr_line_in_code + commLen1) + p[4] \
          #       + 'JUMP {}\n'.format(curr_line_in_code + commLen1 + commLen2) + p[6]
-        code += p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code - commLen1 - commLen2) + p[2][2] + '{}\n'.format(curr_line_in_code + 1) \
+        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen1 - commLen2) + p[2][0][2] + '{}\n'.format(curr_line_in_code + 1) \
               + 'JUMP {}\n'.format(curr_line_in_code-commLen2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 1) + p[6]
         curr_line_in_code += 6 #commLen1 + commLen2 + 1 # 6 to długość kodu dla tego warunku
     else:
