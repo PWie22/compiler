@@ -262,7 +262,7 @@ def p_command_proc_call(p):
     'command : proc_call SEMICOLON'
     # tutaj trzeba napisać kod wywołania procedury
     # na koniec nie zapomnieć o ustawieniu currProc na None
-    global currProcedure
+    #global currProcedure
     p[0] = p[1]
     #currProcedure = None
 
@@ -275,10 +275,10 @@ def p_proc_call(p):
         if procedures_list[i][0] == p[1]:
             j = i
     if j == None:
-        raise Exception("Error: Calling unexisting (or not yet declared) procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
+        raise Exception("Error: Calling unexisting (or not yet declared) procedure {} in line {}.".format(p[1], p.lexer.lineno))
     elif currProcedure == procedures_list[j][0]:
         print("wywołanie w środku ", procedures_list[j][0], " ", currProcedure)
-        raise Exception("Error: Recursive call in procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
+        raise Exception("Error: Recursive call in procedure {} in line {}.".format(p[1], p.lexer.lineno))
     else:
         #if line_of_call < procedures_list[j][1]:
             # ten przypadek chyba nie zajdzie, bo przed zadeklarowaniem procedury nie ma jej w procedures_list
@@ -302,7 +302,7 @@ def p_proc_call(p):
                     if m == None:
                         print("jaka procedura: ", currProcedure)
                         print("all symbols: ", symbols_array, " temp arr2: ", temp_arr2)
-                        raise Exception("Error: Usage of undeclared variable {} in procedure {} in line {}.".format(temp_arr2[i], currProcedure, p.lexer.lineno-1))
+                        raise Exception("Error: Usage of undeclared variable {} in procedure {} in line {}.".format(temp_arr2[i], currProcedure, p.lexer.lineno))
                     else:
                         procNumb = None
                         for n in range(len(procedures_list)):
@@ -323,7 +323,7 @@ def p_proc_call(p):
                         curr_line_in_code += 2
                         m = None
                     else: # typy się nie zgadzają
-                        raise Exception("Error: Calling procedure {} with an argument ({}) of wrong type in line {}.".format(p[1], symbols_array[m][0], p.lexer.lineno-1))
+                        raise Exception("Error: Calling procedure {} with an argument ({}) of wrong type in line {}.".format(p[1], symbols_array[m][0], p.lexer.lineno))
             #currProcedure = p[1] - niepotrzebne, bo to tylko wywołanie procedury, komendy były już wcześniej, jakby co to można się odwołać do p[1]
             # tutaj trzeba dodać skok do miejsca, w którym zaczyna się procedura - ale p.lexer.lineno daje nam linijkę w kodzie,
             # więc trzeba jakoś inaczej znaleźć adres skoku
@@ -802,9 +802,9 @@ with open(sys.argv[1], "r") as f:
     lexer = build_lexer()
     parser = yacc.yacc()
 
-#try:
+try:
     compiled = parser.parse(programme, tracking=True)
     with open(sys.argv[2], "w") as file:
         file.write(compiled)
-#except Exception as ex:
-    #print(ex, " ")
+except Exception as ex:
+    print(ex, " ")
