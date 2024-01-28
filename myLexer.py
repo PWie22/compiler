@@ -56,8 +56,23 @@ t_GREATEREQ = r'>='
 
 t_IF = r'IF'
 t_THEN = r'THEN'
-t_ELSE = r'ELSE'
-t_ENDIF = r'ENDIF'
+
+def t_ELSE(t):
+    r'ELSE'
+    t.value = 'ELSE'
+    t.lexer.isElse = True
+    print("++++++++++++++++++++++++++++++++++ ustawiam na true")
+    return t
+
+#t_ELSE = r'ELSE'
+
+def t_ENDIF(t):
+    r'ENDIF'
+    t.value = 'ENDIF'
+    t.lexer.isElse = False
+    print("++++++++++++++++++++++++++++++++++ ustawiam na false")
+    return t
+#t_ENDIF = r'ENDIF'
 t_REPEAT = r'REPEAT'
 t_UNTIL = r'UNTIL'
 t_WHILE = r'WHILE'
@@ -74,8 +89,8 @@ t_SEMICOLON = r'\;'
 t_COMMA = r'\,'
 t_ARRAYSIGN = r'T'
 
-def build_lexer():
-    return lex.lex()
+#def build_lexer():
+ #   return lex.lex()
 
 def t_error(t):
     print("Illegal sign in line .")
@@ -85,7 +100,10 @@ programme = ''
 with open(sys.argv[1], "r") as file:
     programme = file.read()
 
-lexer = build_lexer()
+#lexer = build_lexer()
+lexer = lex.lex()
+
+lexer.isElse = False
 lexer.input(programme)
 while True:
     t = lexer.token()

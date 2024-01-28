@@ -1,6 +1,6 @@
 
 import ply.yacc as yacc
-from myLexer import build_lexer, tokens
+from myLexer import lexer, tokens
 import sys
 
 # ta tablica będzie zawierać wszystkie zadeklarowane symbole w postaci: (nazwa_symbolu, czy_tablica, pojemność_tablicy, miejsce_w_pamięci, czy_zainicjowana, nazwa_procedury)
@@ -53,6 +53,7 @@ def loadValueToRegister(regName, value):
             value -= 1
     code = 'RST {}\n'.format(regName) + code
     curr_line_in_code += len(code.split('\n'))-1
+    print("po załadowaniu wartości: ", curr_line_in_code)
     return code
 
 def loadVariableToRegister(varName, regName, lineNumb, onlyAddress):
@@ -85,6 +86,7 @@ def loadVariableToRegister(varName, regName, lineNumb, onlyAddress):
             else:
                 code += loadValueToRegister('b', procedures_list[j][4][k][2]) + 'LOAD b\nPUT {}\n'.format(regName)
                 curr_line_in_code += 2
+                print("po załadowaniu zmiennej: ", curr_line_in_code)
                 return code
     elif symbols_array[j][1]:
         raise Exception("Error: Incorrect usage of array {} in line {}.".format(varName, lineNumb))
@@ -103,6 +105,7 @@ def loadVariableToRegister(varName, regName, lineNumb, onlyAddress):
             curr_line_in_code += 2
         #code += 'PUT {}\n'.format(regName)
         #curr_line_in_code += 1
+        print("po załadowaniu zmiennej: ", curr_line_in_code)
         return code
 
 # można by to zrobić wyżej, ale tablica może być indeksowana zmienną, więc wygodniej będzie zrobić osobną funkcję
@@ -130,9 +133,11 @@ def loadArrayToRegister(arrName, regName, index, lineNumb, onlyAddress):
             else:
                 if type(index) is int:
                     code += loadValueToRegister('b', procedures_list[j][4][k][2]) + 'LOAD b\n' + loadValueToRegister('b', index) + 'ADD b\nDEC a\nPUT b\n'
+                    curr_line_in_code += 3
                 else:
                     code += loadVariableToRegister(index, 'c', lineNumb, False) + loadValueToRegister('b', procedures_list[j][4][k][2]) + 'LOAD b\nADD c\nDEC a\nPUT b\n'
-                    curr_line_in_code += 3
+                    curr_line_in_code += 4
+                print("w procedurze po załadowaniu zmiennej: ", curr_line_in_code)
     else:
         if type(index) is int:
             # tablica indeksowana liczbą
@@ -147,6 +152,7 @@ def loadArrayToRegister(arrName, regName, index, lineNumb, onlyAddress):
         if not onlyAddress:
             code += 'LOAD b\nPUT {}\n'.format(regName)
             curr_line_in_code += 2
+        print("po załadownaiu zmiennej: ", curr_line_in_code)
     return code
 
 # funkcja potrzebna, żeby nie sprawdzać czym są val1 i val2 wiele razy
@@ -196,6 +202,7 @@ def p_program(p):
         p[0] = p[2] + 'HALT'
     else:
         procLen = len(p[1].split('\n')) + 1
+        print("linijka maina: ", procLen)
         p[0] = 'JUMP {}\n'.format(procLen) + p[1] + p[2] + 'HALT'
     
 def p_main(p):
@@ -211,11 +218,12 @@ def p_procedures(p):
     '''procedures : procedures PROCEDURE proc_head IS declarations IN commands END
                     | procedures PROCEDURE proc_head IS IN commands END
                     |'''
-    global procedures_list, currProcedure, temp_arr, decl_arr, first_free_mem_index
+    global procedures_list, currProcedure, temp_arr, decl_arr, first_free_mem_index, curr_line_in_code
     code = ''
     if (len(p) == 1):
         print("okej")
         currProcedure = None
+        curr_line_in_code += 1
         print("koniec procedur")
     elif (len(p) == 9):
             #p[0] = p[1] + p[7] + 'HALT'
@@ -226,6 +234,8 @@ def p_procedures(p):
             temp_arr = []
             decl_arr = []
             code += loadValueToRegister('b', procedures_list[len(procedures_list)-1][5]) + 'LOAD b\nJUMPR a\n'
+            curr_line_in_code += 2
+            print("po procedurze: ", curr_line_in_code)
             print("ustawiam na none 1")
             currProcedure = None
             p[0] = p[7] + code
@@ -236,6 +246,8 @@ def p_procedures(p):
         #proc_address = len(p[1].split('\n')) + 1
         temp_arr = []
         code += loadValueToRegister('b', procedures_list[len(procedures_list)-1][5]) + 'LOAD b\nJUMPR a\n'
+        curr_line_in_code += 2
+        print("po procedurze: ", curr_line_in_code)
         print("ustawiam na none 2")
         currProcedure = None
         p[0] = p[6] + code
@@ -328,6 +340,8 @@ def p_proc_call(p):
             # tutaj trzeba dodać skok do miejsca, w którym zaczyna się procedura - ale p.lexer.lineno daje nam linijkę w kodzie,
             # więc trzeba jakoś inaczej znaleźć adres skoku
             # trzeba jeszcze dodać zmianę zmiennej currProcedure na p[1]???
+            code += loadValueToRegister('b', procedures_list[j][5]) + 'RST a\nINC a\nSHL a\nSHL a\nSTRK c\nADD c\nSTORE b\nJUMP {}\n'.format(procedures_list[j][3])
+            curr_line_in_code += 8
             p[0] = code
     temp_arr2 = []
 
@@ -471,6 +485,7 @@ def p_assign(p):
                     code += p[3][1] + loadValuesToRegs((procedures_list[j][4][k][2],), ('b',), p.lexer.lineno-1, True) + 'GET {}\nSTORE b\n'.format(p[3][0])
                 else:
                     code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, True) + loadValuesToRegs((procedures_list[j][4][k][2],), ('b',), p.lexer.lineno-1, True) + 'GET c\nSTORE b\n'
+                curr_line_in_code += 2
     else:
         symbols_array[j][4] = True
         #code += loadValueToRegister('b', symbols_array[j][3]) + str(p[3][0]) + 'STORE b\n'
@@ -515,16 +530,21 @@ def p_if_else_statement(p):
     code = ''
     commLen1 = len(p[4].split('\n'))
     commLen2 = len(p[6].split('\n'))
+    print()
     if isinstance(p[2], tuple):
-        print("p[2]: ", p[2])
+        print("commlen1: ", commLen1, " commlen2: ", commLen2, " current line: ", curr_line_in_code)
         # zastanowić się nad dodaniem dodatkowo condLen
         #code += p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code + 3) + p[2][2] + '{}\n'.format(curr_line_in_code + commLen1) + p[4] \
          #       + 'JUMP {}\n'.format(curr_line_in_code + commLen1 + commLen2) + p[6]
-        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen1 - commLen2) + p[2][0][2] + '{}\n'.format(curr_line_in_code + 1) \
-              + 'JUMP {}\n'.format(curr_line_in_code-commLen2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 1) + p[6]
-        curr_line_in_code += 6 #commLen1 + commLen2 + 1 # 6 to długość kodu dla tego warunku
+        #code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen1 - commLen2) + p[2][0][2] + '{}\n'.format(curr_line_in_code + 1) \
+              #+ 'JUMP {}\n'.format(curr_line_in_code-commLen2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 1) + p[6]
+        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen1 - commLen2+3) + p[2][0][2] + '{}\n'.format(curr_line_in_code-commLen2+3) \
+              + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 2) + p[6] # pierwszy skok był bez +3, drugi bez +3, trzeci miał +1 zamiast +2
+        #curr_line_in_code += 6 #commLen1 + commLen2 + 1 # 6 to długość kodu dla tego warunku
+        curr_line_in_code += 1
     else:
-        code += p[2] + '{}\n'.format(curr_line_in_code + commLen1) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + commLen1 + commLen2) + p[6]
+        #code += p[2] + '{}\n'.format(curr_line_in_code - commLen1) + p[4] + 'JUMP {}\n'.format(curr_line_in_code - commLen1 - commLen2) + p[6]
+        code += p[2] + '{}\n'.format(curr_line_in_code - commLen2 + 3) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 2) + p[6]
         #curr_line_in_code += commLen1 + commLen2
         curr_line_in_code += 1
     #p[0] = p[2] + p[4] + p[6]
@@ -553,7 +573,7 @@ def p_while_loop(p):
         condLen = len(p[2].split('\n'))
         print(" ", condLen)
         #code += p[2] + '{}\n'.format(curr_line_in_code + condLen + commLen) + p[4] + 'JUMP {}\n'.format(curr_line_in_code)
-        code += p[2] + '{}\n'.format(curr_line_in_code + 2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen + 2)
+        code += p[2] + '{}\n'.format(curr_line_in_code + 2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen + 2) # + 3 zamiast +2, bo trzeba jeszcze przesunąć o tego dodanego jumpa w środku
         #curr_line_in_code += condLen + commLen + 1
     curr_line_in_code += 1
     howdeep -= 1
@@ -666,9 +686,18 @@ def p_multiply(p):
     # czy druga liczba nie jest już równa 0
     #code += 'RST f\nGET b\nJZERO {}\nGET d\nJZERO {}\nPUT c\nSHR c\nSHL c\nSUB c\nJPOS {}\nSHL b\nSHR d\nJUMP {}\nGET f\nADD b\n\
      #   PUT f\nDEC d\nJUMP {}\nGET f'.format(currLi+17, currLi+17, currLi+14, currLi+4, currLi+4)
-    code += 'RST f\nGET c\nJZERO {}\nGET d\nJZERO {}\nPUT e\nSHR e\nSHL e\nSUB e\nJPOS {}\nSHL c\nSHR d\nJUMP {}\nGET f\nADD c\n\
-PUT f\nDEC d\nJUMP {}\nGET f\n'.format(currLi+19, currLi+19, currLi+14, currLi+4, currLi+4)
-    curr_line_in_code += 19
+#    code += 'RST f\nGET c\nJZERO {}\nGET d\nJZERO {}\nPUT e\nSHR e\nSHL e\nSUB e\nJPOS {}\nSHL c\nSHR d\nJUMP {}\nGET f\nADD c\n\
+#PUT f\nDEC d\nJUMP {}\nGET f\n'.format(currLi+19, currLi+19, currLi+14, currLi+4, currLi+4)
+    if not p.lexer.isElse:
+        print("wartość isElse jest równa: ", p.lexer.isElse)
+        code += 'RST f\nGET c\nJZERO {}\nGET d\nJZERO {}\nPUT e\nSHR e\nSHL e\nSUB e\nJPOS {}\nSHL c\nSHR d\nJUMP {}\nGET f\nADD c\n\
+PUT f\nDEC d\nJUMP {}\n'.format(currLi+19, currLi+19, currLi+14, currLi+4, currLi+4)
+    else:
+        print("wartość isElse jest równa: ", p.lexer.isElse)
+        code += 'RST f\nGET c\nJZERO {}\nGET d\nJZERO {}\nPUT e\nSHR e\nSHL e\nSUB e\nJPOS {}\nSHL c\nSHR d\nJUMP {}\nGET f\nADD c\n\
+PUT f\nDEC d\nJUMP {}\n'.format(currLi+20, currLi+20, currLi+15, currLi+5, currLi+5)
+    #curr_line_in_code += 19
+    curr_line_in_code += 18
     print("po mnożeniu ", curr_line_in_code)
     p[0] = ('f', code)
 
@@ -685,7 +714,7 @@ def p_divide(p):
       #  GET e\n'.format(currLi+37, currLi+37, currLi+13, currLi+37, currLi+37, currLi+17, currLi+34, currLi+4)
     code += 'RST f\nGET d\nJZERO {}\nGET c\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB c\nJPOS {}\nINC f\nJUMP {}\nRST g\nINC g\nGET d\nPUT e\nSHL e\n\
 SHL g\nGET c\nSUB e\nJPOS {}\nGET e\nSUB c\nJZERO {}\nSHR g\nGET f\nADD g\nPUT f\nSHR e\nGET c\nSUB e\nPUT c\nJUMP {}\nGET f\nADD g\nPUT f\n\
-GET f\n'.format(currLi+37, currLi+37, currLi+13, currLi+37, currLi+37, currLi+17, currLi+34, currLi+4)
+'.format(currLi+37, currLi+37, currLi+13, currLi+37, currLi+37, currLi+17, currLi+34, currLi+4)
 
         #INC e\nJPOS \nGET c\nSUB b\nJPOS \nINC e\nJUMP \nSHL c\nGET b\nSUB c\
         #\nJZERO \nINC e\nINC e\nJPOS\nSHR c\nGET b\nSUB c\nPUT b\nJUMP \n'
@@ -693,9 +722,9 @@ GET f\n'.format(currLi+37, currLi+37, currLi+13, currLi+37, currLi+37, currLi+17
      #   JUMP \nRST g\nINC g\nJUMP \nGET d\nPUT b\nGET c\nPUT e\nRST g\nRST f\nINC f\nGET e\nJZERO \nSHR e\nSHR b\nJUMP \nGET c\nPUT e\nGET b\nJZERO \n\
       #  SHR b\nSHL e\nINC f\nJUMP \nGET d\nPUT b\nGET f\nJZERO \nINC b\n GET b\nSUB d\nPUT b\nJZERO \nDEC b\nDEC f\nSHL g\nINC g\nSHR e\nGET b\nPUT d\n\
        # JUMP \nGET d\nPUT b\nSHL g\nDEC f\nSHR e\nJUMP \nGET g\n'
-    curr_line_in_code += 37
+    curr_line_in_code += 36
     print("po dzieleniu ", curr_line_in_code)
-    p[0] = ('g', code)
+    p[0] = ('f', code)
 
 def p_modulo(p):
     'expression : value MOD value'
@@ -707,7 +736,7 @@ def p_modulo(p):
      #   JZERO {}\nSHR c\nGET b\nSUB c\nPUT b\nSUB c\nJPOS {}\nGET b\n'.format(currLi+27, currLi+27, currLi+12, currLi+27, currLi+27, currLi+12, currLi+27, currLi+12)
     code += 'GET d\nJPOS {}\nPUT c\nJUMP {}\nGET c\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB c\nJPOS {}\nRST c\nJUMP {}\nGET d\nPUT e\nSHL e\nGET c\nSUB e\nJPOS {}\nGET e\nSUB c\n\
 JZERO {}\nSHR e\nGET c\nSUB e\nPUT c\nSUB e\nJPOS {}\n'.format(currLi + 5, currLi+29, currLi+29, currLi+14, currLi+29, currLi+29, currLi+16, currLi+29, currLi+14)
-    curr_line_in_code += 29
+    curr_line_in_code += 28
     print("po modulo ", curr_line_in_code)
     p[0] = ('c', code)
 
@@ -799,12 +828,13 @@ compiled = ''
 
 with open(sys.argv[1], "r") as f:
     programme = f.read()
-    lexer = build_lexer()
+    #lexer = build_lexer()
+    lex = lexer
     parser = yacc.yacc()
 
-try:
+#try:
     compiled = parser.parse(programme, tracking=True)
     with open(sys.argv[2], "w") as file:
         file.write(compiled)
-except Exception as ex:
-    print(ex, " ")
+#except Exception as ex:
+ #   print(ex, " ")
