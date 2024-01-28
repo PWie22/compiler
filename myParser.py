@@ -53,18 +53,19 @@ def loadValueToRegister(regName, value):
             value -= 1
     code = 'RST {}\n'.format(regName) + code
     curr_line_in_code += len(code.split('\n'))-1
-    print("po załadowaniu wartości: ", curr_line_in_code)
     return code
 
 def loadVariableToRegister(varName, regName, lineNumb, onlyAddress):
     global symbols_array, curr_line_in_code, currProcedure, procedures_list, howdeep
     code = ''
     j = None
-    #print("variable: ", varName)
+    print("variable: ", varName)
     for i in range(len(symbols_array)):
-        if symbols_array[i][0] == varName:
+        if symbols_array[i][0] == varName and symbols_array[i][5] == currProcedure:
+            print("rozwiązanie ????????????? : ", symbols_array[i][0], " ", symbols_array[i][5], " ", currProcedure)
             j = i
     if j == None:
+        print("PROCEDURA ", j)
         if currProcedure == None:
             raise Exception("Error: Usage of undeclared variable {} in line {}.".format(varName, lineNumb))
         else:
@@ -84,9 +85,12 @@ def loadVariableToRegister(varName, regName, lineNumb, onlyAddress):
             elif procedures_list[j][4][k][1]:
                 raise Exception("Error: Incorrect usage of variable {} in procedure {} in line {}.".format(varName, currProcedure, lineNumb))
             else:
-                code += loadValueToRegister('b', procedures_list[j][4][k][2]) + 'LOAD b\nPUT {}\n'.format(regName)
+                code += loadValueToRegister('b', procedures_list[j][4][k][2]) # + 'LOAD b\nPUT {}\n'.format(regName)
                 curr_line_in_code += 2
                 print("po załadowaniu zmiennej: ", curr_line_in_code)
+                if not onlyAddress:
+                    code += 'LOAD b\nPUT {}\n'.format(regName)
+                    curr_line_in_code += 2
                 return code
     elif symbols_array[j][1]:
         raise Exception("Error: Incorrect usage of array {} in line {}.".format(varName, lineNumb))
@@ -105,7 +109,6 @@ def loadVariableToRegister(varName, regName, lineNumb, onlyAddress):
             curr_line_in_code += 2
         #code += 'PUT {}\n'.format(regName)
         #curr_line_in_code += 1
-        print("po załadowaniu zmiennej: ", curr_line_in_code)
         return code
 
 # można by to zrobić wyżej, ale tablica może być indeksowana zmienną, więc wygodniej będzie zrobić osobną funkcję
@@ -137,7 +140,6 @@ def loadArrayToRegister(arrName, regName, index, lineNumb, onlyAddress):
                 else:
                     code += loadVariableToRegister(index, 'c', lineNumb, False) + loadValueToRegister('b', procedures_list[j][4][k][2]) + 'LOAD b\nADD c\nDEC a\nPUT b\n'
                     curr_line_in_code += 4
-                print("w procedurze po załadowaniu zmiennej: ", curr_line_in_code)
     else:
         if type(index) is int:
             # tablica indeksowana liczbą
@@ -152,7 +154,6 @@ def loadArrayToRegister(arrName, regName, index, lineNumb, onlyAddress):
         if not onlyAddress:
             code += 'LOAD b\nPUT {}\n'.format(regName)
             curr_line_in_code += 2
-        print("po załadownaiu zmiennej: ", curr_line_in_code)
     return code
 
 # funkcja potrzebna, żeby nie sprawdzać czym są val1 i val2 wiele razy
@@ -180,6 +181,7 @@ def loadValuesToRegs(values, regs, lineNumb, onlyAddress):
                 else:
                     # to jest zwykła zmienna
                     #code += loadVariableToRegister(values[i][0][0], regs[i], lineNumb, onlyAddress)
+                    print("*********************************** ", values[i][0][0][0])
                     code += loadVariableToRegister(values[i][0][0][0], regs[i], lineNumb, onlyAddress)
             else:
                 # to jest zwykła liczba
@@ -201,7 +203,7 @@ def p_program(p):
         print("tutaj")
         p[0] = p[2] + 'HALT'
     else:
-        procLen = len(p[1].split('\n')) + 1
+        procLen = len(p[1].split('\n')) # było jeszcze +1
         print("linijka maina: ", procLen)
         p[0] = 'JUMP {}\n'.format(procLen) + p[1] + p[2] + 'HALT'
     
@@ -223,7 +225,7 @@ def p_procedures(p):
     if (len(p) == 1):
         print("okej")
         currProcedure = None
-        curr_line_in_code += 1
+        #curr_line_in_code += 1
         print("koniec procedur")
     elif (len(p) == 9):
             #p[0] = p[1] + p[7] + 'HALT'
@@ -237,6 +239,7 @@ def p_procedures(p):
             curr_line_in_code += 2
             print("po procedurze: ", curr_line_in_code)
             print("ustawiam na none 1")
+            curr_line_in_code -= 1 # odejmowane, bo w mainie nie może być +1
             currProcedure = None
             p[0] = p[7] + code
     else:
@@ -249,6 +252,7 @@ def p_procedures(p):
         curr_line_in_code += 2
         print("po procedurze: ", curr_line_in_code)
         print("ustawiam na none 2")
+        curr_line_in_code -= 1
         currProcedure = None
         p[0] = p[6] + code
 
@@ -262,6 +266,7 @@ def p_proc_head(p):
     if not j == None:
         raise Exception("Error: Redaclaration of procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
     else:
+        curr_line_in_code += 1 # dodawanie, bo potrzebne do dobrego ustawiania skoków w procedurze
         #procedures_list.append([p[1], p.lineno, 0]); w p[3] będą zapisywane nazwy i typy zmiennych wejściowych procedury
         procedures_list.append([p[1], p.lexer.lineno-1, 0, curr_line_in_code, temp_arr, first_free_mem_index])
         first_free_mem_index += 1
@@ -331,14 +336,11 @@ def p_proc_call(p):
                         #code += loadValueToRegister('b', procedures_list[j][5]) + loadValueToRegister('a', curr_line_in_code) + 'STORE b\n' # ładowanie adresu powrotu
                         symbols_array[m][4] = True # dodane, ponieważ można wywołać procedurę z parametrami, które były wcześniej tylko zadeklarowane, ale nie zainicjowane
                         code += loadValueToRegister('b', procedures_list[j][4][i][2]) + loadValueToRegister('a',symbols_array[m][3]) + 'STORE b\n'
-                        # dodać adres skoku do procedury
                         curr_line_in_code += 2
                         m = None
                     else: # typy się nie zgadzają
                         raise Exception("Error: Calling procedure {} with an argument ({}) of wrong type in line {}.".format(p[1], symbols_array[m][0], p.lexer.lineno))
             #currProcedure = p[1] - niepotrzebne, bo to tylko wywołanie procedury, komendy były już wcześniej, jakby co to można się odwołać do p[1]
-            # tutaj trzeba dodać skok do miejsca, w którym zaczyna się procedura - ale p.lexer.lineno daje nam linijkę w kodzie,
-            # więc trzeba jakoś inaczej znaleźć adres skoku
             # trzeba jeszcze dodać zmianę zmiennej currProcedure na p[1]???
             code += loadValueToRegister('b', procedures_list[j][5]) + 'RST a\nINC a\nSHL a\nSHL a\nSTRK c\nADD c\nSTORE b\nJUMP {}\n'.format(procedures_list[j][3])
             curr_line_in_code += 8
@@ -462,7 +464,7 @@ def p_assign(p):
     #print("p[1][0][0]: ", p[1][0][0], " ", p[1])
     for i in range(len(symbols_array)):
         #if p[1][0] == symbols_array[i][0]:
-        if p[1][0][0][0] == symbols_array[i][0]:
+        if p[1][0][0][0] == symbols_array[i][0] and symbols_array[i][5] == currProcedure:
             j = i
     if j == None:
         # w wyświetlaniu błędu jako p[1][0] pokazuje się (('nazwa zmiennej', czy_jest_liczbą),) - zmienić, żeby pokazywało tylko nazwę
@@ -476,6 +478,7 @@ def p_assign(p):
             k = None
             for i in range(len(procedures_list[j][4])):
                 if procedures_list[j][4][i][0] == p[1][0][0][0]:
+                    print("nazwa zmiennej:                                   ", procedures_list[j][4][i][0])
                     k = i
             if k == None:
                 raise Exception("Error: Usage of undeclared variable {} in line {}.".format(p[1][0][0][0], p.lexer.lineno))
@@ -484,7 +487,9 @@ def p_assign(p):
                     print("szukam błędu: ", procedures_list[j][4][k][2])
                     code += p[3][1] + loadValuesToRegs((procedures_list[j][4][k][2],), ('b',), p.lexer.lineno-1, True) + 'GET {}\nSTORE b\n'.format(p[3][0])
                 else:
-                    code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, True) + loadValuesToRegs((procedures_list[j][4][k][2],), ('b',), p.lexer.lineno-1, True) + 'GET c\nSTORE b\n'
+                    print("wyświetlam: ", p[3])
+                    #code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, False) + loadValuesToRegs((procedures_list[j][4][k][2],), ('b',), p.lexer.lineno-1, False) + 'GET c\nSTORE b\n'
+                    code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, False) + loadValuesToRegs((procedures_list[j][4][k][2],), ('b',), p.lexer.lineno-1, True) + 'LOAD b\nPUT b\nGET c\nSTORE b\n'
                 curr_line_in_code += 2
     else:
         symbols_array[j][4] = True
@@ -499,7 +504,7 @@ def p_assign(p):
             # to jest liczba, zmienna albo element tablicy
             print("Coś jest nie tak: ", p[3][0])
             # tutaj nie może być PUT c dodawane do kodu 'PUT c\n' + było przed załadowaniem drugiej wartości do rejestru b
-            code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, True) + loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1, True) + 'GET c\nSTORE b\n'
+            code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, False) + loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1, True) + 'GET c\nSTORE b\n'
     curr_line_in_code += 2
     p[0] = code
 
@@ -513,12 +518,12 @@ def p_if_statement(p):
     if isinstance(p[2], tuple):
         # w warunku występuje >= lub <= - są tam dwa skoki zamiast jednego, dlatego ten przypadek osobno
         #code += p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code + 3) + p[2][2] + '{}\n'.format(curr_line_in_code + commLen)
-        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen + 2) + p[2][0][2] + '{}\n'.format(curr_line_in_code + 1)
+        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen + 1) + p[2][0][2] + '{}\n'.format(curr_line_in_code) # było curr_line_in_code - commLen + 2, a w drugim curr_line_in_code + 1
         #curr_line_in_code += 6 + commLen # 6 to długość kodu dla tego warunku
     else:
         # w warunku nie ma >= ani <=
         #code += p[2] + '{}\n'.format(curr_line_in_code + commLen) - w curr_line_in_code już jest zawarte commLen
-        code += p[2] + '{}\n'.format(curr_line_in_code + 1)
+        code += p[2] + '{}\n'.format(curr_line_in_code) # było curr_line_in_code + 1
         #condLen = len(p[2].split('\n'))
         #curr_line_in_code += condLen + commLen
     howdeep -= 1
@@ -533,18 +538,18 @@ def p_if_else_statement(p):
     print()
     if isinstance(p[2], tuple):
         print("commlen1: ", commLen1, " commlen2: ", commLen2, " current line: ", curr_line_in_code)
-        # zastanowić się nad dodaniem dodatkowo condLen
-        #code += p[2][0] + p[2][1] + '{}\n'.format(curr_line_in_code + 3) + p[2][2] + '{}\n'.format(curr_line_in_code + commLen1) + p[4] \
-         #       + 'JUMP {}\n'.format(curr_line_in_code + commLen1 + commLen2) + p[6]
         #code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen1 - commLen2) + p[2][0][2] + '{}\n'.format(curr_line_in_code + 1) \
               #+ 'JUMP {}\n'.format(curr_line_in_code-commLen2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 1) + p[6]
-        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen1 - commLen2+3) + p[2][0][2] + '{}\n'.format(curr_line_in_code-commLen2+3) \
-              + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 2) + p[6] # pierwszy skok był bez +3, drugi bez +3, trzeci miał +1 zamiast +2
+        #code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen1 - commLen2+3) + p[2][0][2] + '{}\n'.format(curr_line_in_code-commLen2+3) \
+         #     + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 2) + p[6] # pierwszy skok był bez +3, drugi bez +3, trzeci miał +1 zamiast +2
+        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen1 - commLen2 + 2) + p[2][0][2] + '{}\n'.format(curr_line_in_code-commLen2 + 2) \
+              + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 1) + p[6]
         #curr_line_in_code += 6 #commLen1 + commLen2 + 1 # 6 to długość kodu dla tego warunku
         curr_line_in_code += 1
     else:
         #code += p[2] + '{}\n'.format(curr_line_in_code - commLen1) + p[4] + 'JUMP {}\n'.format(curr_line_in_code - commLen1 - commLen2) + p[6]
-        code += p[2] + '{}\n'.format(curr_line_in_code - commLen2 + 3) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 2) + p[6]
+        #code += p[2] + '{}\n'.format(curr_line_in_code - commLen2 + 3) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 2) + p[6]
+        code += p[2] + '{}\n'.format(curr_line_in_code - commLen2 + 2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 1) + p[6]
         #curr_line_in_code += commLen1 + commLen2
         curr_line_in_code += 1
     #p[0] = p[2] + p[4] + p[6]
@@ -565,15 +570,18 @@ def p_while_loop(p):
         addLen = len(p[2][0][0].split('\n'))
         print("add: ", addLen)
         condLen = 6
-        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen + 2) + p[2][0][2] + '{}\n'.format(curr_line_in_code + 2) + p[4] \
-                + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen - addLen + 3)
+        #code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen + 2) + p[2][0][2] + '{}\n'.format(curr_line_in_code + 2) + p[4] \
+         #       + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen - addLen + 3)
+        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen + 1) + p[2][0][2] + '{}\n'.format(curr_line_in_code + 1) + p[4] \
+                + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen - addLen + 2)
         #+ 'JUMP {}\n'.format(curr_line_in_code)
         #curr_line_in_code += 6 + commLen + 1
     else:
         condLen = len(p[2].split('\n'))
         print(" ", condLen)
         #code += p[2] + '{}\n'.format(curr_line_in_code + condLen + commLen) + p[4] + 'JUMP {}\n'.format(curr_line_in_code)
-        code += p[2] + '{}\n'.format(curr_line_in_code + 2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen + 2) # + 3 zamiast +2, bo trzeba jeszcze przesunąć o tego dodanego jumpa w środku
+        #code += p[2] + '{}\n'.format(curr_line_in_code + 2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen + 2) # + 3 zamiast +2, bo trzeba jeszcze przesunąć o tego dodanego jumpa w środku
+        code += p[2] + '{}\n'.format(curr_line_in_code + 1) + p[4] + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen + 1)
         #curr_line_in_code += condLen + commLen + 1
     curr_line_in_code += 1
     howdeep -= 1
@@ -691,11 +699,13 @@ def p_multiply(p):
     if not p.lexer.isElse:
         print("wartość isElse jest równa: ", p.lexer.isElse)
         code += 'RST f\nGET c\nJZERO {}\nGET d\nJZERO {}\nPUT e\nSHR e\nSHL e\nSUB e\nJPOS {}\nSHL c\nSHR d\nJUMP {}\nGET f\nADD c\n\
-PUT f\nDEC d\nJUMP {}\n'.format(currLi+19, currLi+19, currLi+14, currLi+4, currLi+4)
+PUT f\nDEC d\nJUMP {}\n'.format(currLi+18, currLi+18, currLi+13, currLi+3, currLi+3)
+        # w nawiasie było currLi+19, currLi+19, currLi+14, currLi+4, currLi+4
     else:
         print("wartość isElse jest równa: ", p.lexer.isElse)
         code += 'RST f\nGET c\nJZERO {}\nGET d\nJZERO {}\nPUT e\nSHR e\nSHL e\nSUB e\nJPOS {}\nSHL c\nSHR d\nJUMP {}\nGET f\nADD c\n\
-PUT f\nDEC d\nJUMP {}\n'.format(currLi+20, currLi+20, currLi+15, currLi+5, currLi+5)
+PUT f\nDEC d\nJUMP {}\n'.format(currLi+19, currLi+19, currLi+14, currLi+4, currLi+4)
+        # w nawiasie było currLi+20, currLi+20, currLi+15, currLi+5, currLi+5
     #curr_line_in_code += 19
     curr_line_in_code += 18
     print("po mnożeniu ", curr_line_in_code)
