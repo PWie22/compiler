@@ -22,6 +22,8 @@ decl_arr = []
 # howdeep to zmienna, która mówi, jak głęboko w pętlach i/lub ifach jesteśmy - jedno wejście do conditions zwiększa jej wartość o 1, a wyjście z pętli/ifa zmniejsza o 1
 howdeep = 0
 
+procedures_code = ''
+
 ### SECTION FOR ALL FUNCTIONS NECESARRY FOR THE PARSER ###
 
 # funkcja dodająca nową nazwę zmiennej do zbioru już zadeklarowanych zmiennych
@@ -135,11 +137,11 @@ def loadArrayToRegister(arrName, regName, index, lineNumb, onlyAddress):
                 raise Exception("Error: Usage of undeclared array {} in line {}.".format(arrName, lineNumb))
             else:
                 if type(index) is int:
-                    code += loadValueToRegister('b', procedures_list[j][4][k][2]) + 'LOAD b\n' + loadValueToRegister('b', index) + 'ADD b\nDEC a\nPUT b\n'
+                    code += loadValueToRegister('b', procedures_list[j][4][k][2]) + 'LOAD b\n' + loadValueToRegister('b', index) + 'ADD b\nPUT b\n' # na końcu było 'ADD b\nDEC a\nPUT b\n'
                     curr_line_in_code += 3
                 else:
-                    code += loadVariableToRegister(index, 'c', lineNumb, False) + loadValueToRegister('b', procedures_list[j][4][k][2]) + 'LOAD b\nADD c\nDEC a\nPUT b\n'
-                    curr_line_in_code += 4
+                    code += loadVariableToRegister(index, 'c', lineNumb, False) + loadValueToRegister('b', procedures_list[j][4][k][2]) + 'LOAD b\nADD c\nPUT b\n' # na końcu było 'LOAD b\nADD c\nDEC a\nPUT b\n'
+                    curr_line_in_code += 3
     else:
         if type(index) is int:
             # tablica indeksowana liczbą
@@ -149,8 +151,8 @@ def loadArrayToRegister(arrName, regName, index, lineNumb, onlyAddress):
             # tablica indeksowana zmienną
             #code += loadVariableToRegister(index, 'c', lineNumb) + loadValueToRegister('a', symbols_array[j][3]) + 'ADD c\nDEC a\nPUT b\nLOAD b\nPUT {}\n'.format(regName)
             print("index: ", index)
-            code += loadVariableToRegister(index, 'c', lineNumb, False) + loadValueToRegister('a', symbols_array[j][3]) + 'ADD c\nDEC a\nPUT b\n'
-            curr_line_in_code += 3
+            code += loadVariableToRegister(index, 'c', lineNumb, False) + loadValueToRegister('a', symbols_array[j][3]) + 'ADD c\nPUT b\n' # na końcu było 'ADD c\nDEC a\nPUT b\n'
+            curr_line_in_code += 2
         if not onlyAddress:
             code += 'LOAD b\nPUT {}\n'.format(regName)
             curr_line_in_code += 2
@@ -199,13 +201,15 @@ precedence = (
         
 def p_program(p):
     '''program : procedures main'''
+    global procedures_code
     if not p[1]:
         print("tutaj")
         p[0] = p[2] + 'HALT'
     else:
         procLen = len(p[1].split('\n')) # było jeszcze +1
-        print("linijka maina: ", procLen)
-        p[0] = 'JUMP {}\n'.format(procLen) + p[1] + p[2] + 'HALT'
+        print("linijka maina: ", procLen, " ", len(procedures_code.split('\n')))
+        #p[0] = 'JUMP {}\n'.format(procLen) + p[1] + p[2] + 'HALT'
+        p[0] = 'JUMP {}\n'.format(len(procedures_code.split('\n'))) + procedures_code + p[2] + 'HALT'
     
 def p_main(p):
     '''main : PROGRAM IS declarations IN commands END
@@ -220,7 +224,7 @@ def p_procedures(p):
     '''procedures : procedures PROCEDURE proc_head IS declarations IN commands END
                     | procedures PROCEDURE proc_head IS IN commands END
                     |'''
-    global procedures_list, currProcedure, temp_arr, decl_arr, first_free_mem_index, curr_line_in_code
+    global procedures_list, currProcedure, temp_arr, decl_arr, first_free_mem_index, curr_line_in_code, procedures_code
     code = ''
     if (len(p) == 1):
         print("okej")
@@ -242,6 +246,7 @@ def p_procedures(p):
             curr_line_in_code -= 1 # odejmowane, bo w mainie nie może być +1
             currProcedure = None
             p[0] = p[7] + code
+            procedures_code += p[7] + code
     else:
         #p[0] = p[1] + p[6] + 'HALT'
         #procedures_list[len(procedures_list)-1][2] = p.parser.token_slice[p.slice[7]].lineno
@@ -255,6 +260,7 @@ def p_procedures(p):
         curr_line_in_code -= 1
         currProcedure = None
         p[0] = p[6] + code
+        procedures_code += p[6] + code
 
 def p_proc_head(p):
     'proc_head : VARID LPAREN args_decl RPAREN'
@@ -486,11 +492,12 @@ def p_assign(p):
                 if type(p[3][0]) is str:
                     print("szukam błędu: ", procedures_list[j][4][k][2])
                     code += p[3][1] + loadValuesToRegs((procedures_list[j][4][k][2],), ('b',), p.lexer.lineno-1, True) + 'GET {}\nSTORE b\n'.format(p[3][0])
+                    curr_line_in_code += 2
                 else:
                     print("wyświetlam: ", p[3])
                     #code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, False) + loadValuesToRegs((procedures_list[j][4][k][2],), ('b',), p.lexer.lineno-1, False) + 'GET c\nSTORE b\n'
                     code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, False) + loadValuesToRegs((procedures_list[j][4][k][2],), ('b',), p.lexer.lineno-1, True) + 'LOAD b\nPUT b\nGET c\nSTORE b\n'
-                curr_line_in_code += 2
+                    curr_line_in_code += 4
     else:
         symbols_array[j][4] = True
         #code += loadValueToRegister('b', symbols_array[j][3]) + str(p[3][0]) + 'STORE b\n'
@@ -505,7 +512,7 @@ def p_assign(p):
             print("Coś jest nie tak: ", p[3][0])
             # tutaj nie może być PUT c dodawane do kodu 'PUT c\n' + było przed załadowaniem drugiej wartości do rejestru b
             code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, False) + loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1, True) + 'GET c\nSTORE b\n'
-    curr_line_in_code += 2
+        curr_line_in_code += 2
     p[0] = code
 
 def p_if_statement(p):
