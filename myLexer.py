@@ -81,7 +81,14 @@ t_ENDWHILE = r'ENDWHILE'
 t_READ = r'READ'
 t_WRITE = r'WRITE'
 t_PROGRAM = r'PROGRAM'
-t_PROCEDURE = r'PROCEDURE'
+
+def t_PROCEDURE(t):
+	r'PROCEDURE'
+	t.value = 'PROCEDURE'
+	t.lexer.hasProcedures = True
+	return t
+
+#t_PROCEDURE = r'PROCEDURE'
 t_IS = r'IS'
 t_IN = r'IN'
 t_END = r'END'
@@ -104,9 +111,11 @@ with open(sys.argv[1], "r") as file:
 lexer = lex.lex()
 
 lexer.isElse = False
+lexer.hasProcedures = False
 lexer.input(programme)
 while True:
     t = lexer.token()
     if not t:
         break
     print(t)
+lexer.lineno = 1
