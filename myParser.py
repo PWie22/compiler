@@ -9,7 +9,7 @@ symbols_array = []
 # każdy element procedures_list będzie postaci (nazwa_procedury, gdzie_początek, gdzie_koniec, adres_assemblerowy, zmienne_z_nawiasu, gdzie_w_pamięci_adres_powrotu)
 procedures_list = []
 first_free_mem_index = 0
-# curr_line_in_code - obecna linijka w generowanym kodzie, czy to zadziała???
+# curr_line_in_code - obecna linijka w generowanym kodzie
 curr_line_in_code = 0
 # isinprocedure - zmienna, która jest wykorzystywana, żeby dobrze dodać zmienne procedury i maina do tablicy symboli
 currProcedure = None
@@ -245,7 +245,6 @@ def p_proc_call(p):
     if j == None:
         raise Exception("Error: Calling unexisting (or not yet declared) procedure {} in line {}.".format(p[1], p.lexer.lineno))
     elif currProcedure == procedures_list[j][0]:
-        print("wywolanie w srodku ", procedures_list[j][0], " ", currProcedure)
         raise Exception("Error: Recursive call in procedure {} in line {}.".format(p[1], p.lexer.lineno))
     else:
             m = None
