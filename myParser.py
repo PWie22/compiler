@@ -3,8 +3,15 @@ import ply.yacc as yacc
 from myLexer import lexer, tokens
 import sys
 
-# ta tablica będzie zawierać wszystkie zadeklarowane symbole w postaci: (nazwa_symbolu, czy_tablica, pojemność_tablicy, miejsce_w_pamięci, czy_zainicjowana, nazwa_procedury)
-# nazwa_procedury tylko, jeżeli zmienna pochodzi z procedury; jeszcze musi być adres pamięci
+# list of all declared symbols except these in brackets in procedures; every element of the list follows the pattern:
+# name_of_the_symbol - just name of the symbol,
+# is_array - boolean variable, if True, then this symbol is a name of an array, otherwise it is a variable,
+# capacity - if this is an array, then capacity is a number grater than zero, if a variable, then capacity is equal to zero,
+# place_in_memory - memory cells are enumerated from zero and this is a position taken by the symbol in the memory; if this 
+#                   is an array, then it is the first memory cell allocated for this array,
+# is_initiated - boolean variable, if a symbol has not been initiated, it is set to False, True otherwise (if this is an array,
+#                   then it is_initiated is set to True when one of its elements is asigned a value),
+# name_of_procedure - name of procedure which the symbol belongs to
 symbols_array = []
 # każdy element procedures_list będzie postaci (nazwa_procedury, gdzie_początek, gdzie_koniec, adres_assemblerowy, zmienne_z_nawiasu, gdzie_w_pamięci_adres_powrotu)
 procedures_list = []
@@ -14,11 +21,14 @@ curr_line_in_code = 0
 # isinprocedure - zmienna, która jest wykorzystywana, żeby dobrze dodać zmienne procedury i maina do tablicy symboli
 currProcedure = None
 # temp_arr to tablica na dodanie symboli z nawiasu procedury, żeby sprawdzić, czy nie powtarzają symboli, podczas deklarowania procedury
-temp_arr = []
+#temp_arr = [] #proc_bracket_args
+proc_bracket_args = []
 # temp_arr2 to tablica na dodanie symboli z nawiasu procedury, gdy jest ona wywoływana
-temp_arr2 = []
+#temp_arr2 = [] #proc_call_args
+proc_call_args = []
 # decl_arr to tablica na przechowanie zmiennych własnych procedury
-decl_arr = []
+#decl_arr = [] #proc_inside_variables
+proc_inside_variables = []
 # howdeep to zmienna, która mówi, jak głęboko w pętlach i/lub ifach jesteśmy - jedno wejście do conditions zwiększa jej wartość o 1, a wyjście z pętli/ifa zmniejsza o 1
 howdeep = 0
 # procedures_code to zmienna, w ktorej zapisywany jest kod procedur
@@ -57,7 +67,7 @@ def loadValueToRegister(regName, value):
     return code
 
 def loadVariableToRegister(varName, regName, lineNumb, onlyAddress):
-    global symbols_array, curr_line_in_code, currProcedure, procedures_list, howdeep
+    global curr_line_in_code # było jeszcze symbols_array, currProcedure, ale ta zmienna jest tylkko odczytywana, nie zmieniana
     code = ''
     j = None
     for i in range(len(symbols_array)):
@@ -65,32 +75,32 @@ def loadVariableToRegister(varName, regName, lineNumb, onlyAddress):
             j = i
     if j == None:
         if currProcedure == None:
-            raise Exception("Error: Usage of undeclared variable {} in line {}.".format(varName, lineNumb))
+            raise Exception("Error: Use of undeclared variable {} in line {}.".format(varName, lineNumb))
         else:
             for i in range(len(procedures_list)):
                 if procedures_list[i][0] == currProcedure:
                     j = i
                     break
             k = None
-            for i in range(len(procedures_list[j][4])):
-                if procedures_list[j][4][i][0] == varName:
+            for i in range(len(procedures_list[j][2])):
+                if procedures_list[j][2][i][0] == varName:
                     k = i
                     break
             if k == None:
-                raise Exception("Error: Usage of undeclared variable {} in procedure {} in line {}.".format(varName, currProcedure, lineNumb))
-            elif procedures_list[j][4][k][1]:
-                raise Exception("Error: Incorrect usage of variable {} in procedure {} in line {}.".format(varName, currProcedure, lineNumb))
+                raise Exception("Error: Use of undeclared variable {} in procedure {} in line {}.".format(varName, currProcedure, lineNumb))
+            elif procedures_list[j][2][k][1]:
+                raise Exception("Error: Incorrect use of variable {} in procedure {} in line {}.".format(varName, currProcedure, lineNumb))
             else:
-                code += loadValueToRegister('b', procedures_list[j][4][k][2]) + 'LOAD b\nPUT {}\n'.format(regName)
+                code += loadValueToRegister('b', procedures_list[j][2][k][2]) + 'LOAD b\nPUT {}\n'.format(regName)
                 curr_line_in_code += 2
                 if not onlyAddress:
                     code += 'LOAD b\nPUT {}\n'.format(regName)
                     curr_line_in_code += 2
                 return code
     elif symbols_array[j][1]:
-        raise Exception("Error: Incorrect usage of array {} in line {}.".format(varName, lineNumb))
+        raise Exception("Error: Incorrect use of array {} in line {}.".format(varName, lineNumb))
     elif howdeep < 2 and not symbols_array[j][4]:
-        raise Exception("Error: Usage of uninitialized variable {} in line {}.".format(symbols_array[j][0], lineNumb))
+        raise Exception("Error: Use of uninitialized variable {} in line {}.".format(symbols_array[j][0], lineNumb))
     else:
         if howdeep >= 2 and not symbols_array[j][4]:
             print("Warning: Variable {} has not been initialized yet (line {}).".format(symbols_array[j][0], lineNumb))
@@ -101,31 +111,31 @@ def loadVariableToRegister(varName, regName, lineNumb, onlyAddress):
         return code
 
 def loadArrayToRegister(arrName, regName, index, lineNumb, onlyAddress):
-    global symbols_array, curr_line_in_code, currProcedure, procedures_list
+    global curr_line_in_code
     code = ''
     j = None
     for i in range(len(symbols_array)):
-        if symbols_array[i][0] == arrName:
+        if symbols_array[i][0] == arrName and symbols_array[i][5] == currProcedure: # dodany drugi warunek
             j = i
     if j == None:
         if currProcedure == None:
-            raise Exception("Error: Usage of undeclared array {} in line {}.".format(arrName, lineNumb))
+            raise Exception("Error: Use of undeclared array {} in line {}.".format(arrName, lineNumb))
         else:
             for i in range(len(procedures_list)):
                 if procedures_list[i][0] == currProcedure:
                     j = i
             k = None
-            for i in range(len(procedures_list[j][4])):
-                if procedures_list[j][4][i][0] == arrName:
+            for i in range(len(procedures_list[j][2])):
+                if procedures_list[j][2][i][0] == arrName:
                     k = i
             if k == None:
-                raise Exception("Error: Usage of undeclared array {} in line {}.".format(arrName, lineNumb))
+                raise Exception("Error: Use of undeclared array {} in line {}.".format(arrName, lineNumb))
             else:
                 if type(index) is int:
-                    code += loadValueToRegister('b', procedures_list[j][4][k][2]) + 'LOAD b\n' + loadValueToRegister('b', index) + 'ADD b\nPUT b\n'
+                    code += loadValueToRegister('b', procedures_list[j][2][k][2]) + 'LOAD b\n' + loadValueToRegister('b', index) + 'ADD b\nPUT b\n'
                     curr_line_in_code += 3
                 else:
-                    code += loadVariableToRegister(index, 'h', lineNumb, False) + loadValueToRegister('b', procedures_list[j][4][k][2]) + 'LOAD b\nADD h\nPUT b\n'
+                    code += loadVariableToRegister(index, 'h', lineNumb, False) + loadValueToRegister('b', procedures_list[j][2][k][2]) + 'LOAD b\nADD h\nPUT b\n'
                     curr_line_in_code += 3
                 if not onlyAddress:
                     code += 'LOAD b\nPUT {}\n'.format(regName)
@@ -146,22 +156,22 @@ def loadArrayToRegister(arrName, regName, index, lineNumb, onlyAddress):
 # funkcja potrzebna, żeby nie sprawdzać czym są val1 i val2 wiele razy
 # w values są trzymane dwójki (val, is_numb) - val to wartość, is_numb to wartość boolowska, jest równa true, jeżeli to jest zwykła liczba
 def loadValuesToRegs(values, regs, lineNumb, onlyAddress):
-    global symbols_array, curr_line_in_code
+    #global curr_line_in_code
     code = ''
     for i in range(len(values)):
-        if isinstance(values[i], int): # będzie tak tylko w przypadku procedury
+        if type(values[i]) is int: # będzie tak tylko w przypadku procedury
             code += loadValueToRegister(regs[i], values[i])
         else:
-            if not values[i][0][0][1]:
+            if len(values[i]) > 1:#if not values[i][0][0][1]:
                 if values[i][1]:
                     # to jest element tablicy
-                    code += loadArrayToRegister(values[i][0][0][0], regs[i], values[i][2], lineNumb, onlyAddress)
+                    code += loadArrayToRegister(values[i][0], regs[i], values[i][2], lineNumb, onlyAddress) # było values[i][0][0][0]
                 else:
                     # to jest zwykła zmienna
-                    code += loadVariableToRegister(values[i][0][0][0], regs[i], lineNumb, onlyAddress)
+                    code += loadVariableToRegister(values[i][0], regs[i], lineNumb, onlyAddress) # było values[i][0][0][0]
             else:
                 # to jest zwykła liczba
-                code += loadValueToRegister(regs[i], int(values[i][0][0][0]))
+                code += loadValueToRegister(regs[i], int(values[i][0])) #loadValueToRegister(regs[i], int(values[i][0][0][0])) #values[i][0]
     return code
 
     ### MAIN PART OF THE PARSER ###
@@ -175,10 +185,9 @@ def p_program(p):
     '''program : procedures main'''
     global procedures_code
     if not p[1]:
-        print("tutaj")
         p[0] = p[2] + 'HALT'
     else:
-        procLen = len(p[1].split('\n'))
+        #procLen = len(p[1].split('\n'))
         p[0] = 'JUMP {}\n'.format(len(procedures_code.split('\n'))) + procedures_code + p[2] + 'HALT'
     
 def p_main(p):
@@ -193,23 +202,25 @@ def p_procedures(p):
     '''procedures : procedures PROCEDURE proc_head IS declarations IN commands END
                     | procedures PROCEDURE proc_head IS IN commands END
                     |'''
-    global procedures_list, currProcedure, temp_arr, decl_arr, first_free_mem_index, curr_line_in_code, procedures_code
+    #global procedures_list, currProcedure, proc_bracket_args, proc_inside_variables, first_free_mem_index, curr_line_in_code, procedures_code
+    global currProcedure, proc_bracket_args, proc_inside_variables, curr_line_in_code, procedures_code
+
     code = ''
     if (len(p) == 1):
         currProcedure = None
         if p.lexer.hasProcedures:
             curr_line_in_code += 1
     elif (len(p) == 9):
-            temp_arr = []
-            decl_arr = []
-            code += loadValueToRegister('b', procedures_list[len(procedures_list)-1][5]) + 'LOAD b\nJUMPR a\n'
+            proc_bracket_args = []
+            proc_inside_variables = []
+            code += loadValueToRegister('b', procedures_list[-1][3]) + 'LOAD b\nJUMPR a\n'
             curr_line_in_code += 2
             currProcedure = None
             p[0] = p[7] + code
             procedures_code += p[7] + code
     else:
-        temp_arr = []
-        code += loadValueToRegister('b', procedures_list[len(procedures_list)-1][5]) + 'LOAD b\nJUMPR a\n'
+        proc_bracket_args = []
+        code += loadValueToRegister('b', procedures_list[-1][3]) + 'LOAD b\nJUMPR a\n'
         curr_line_in_code += 2
         currProcedure = None
         p[0] = p[6] + code
@@ -217,7 +228,7 @@ def p_procedures(p):
 
 def p_proc_head(p):
     'proc_head : VARID LPAREN args_decl RPAREN'
-    global procedures_list, currProcedure, curr_line_in_code, first_free_mem_index
+    global procedures_list, currProcedure, first_free_mem_index
     j = None
     for i in range(len(procedures_list)):
         if procedures_list[i][0] == p[1]:
@@ -225,10 +236,10 @@ def p_proc_head(p):
     if not j == None:
         raise Exception("Error: Redaclaration of procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
     else:
-        procedures_list.append([p[1], p.lexer.lineno-1, 0, curr_line_in_code, temp_arr, first_free_mem_index])
+        procedures_list.append([p[1], curr_line_in_code, proc_bracket_args, first_free_mem_index])
         first_free_mem_index += 1
         currProcedure = p[1]
-        p[0] = (p[1], p.lineno)
+        #p[0] = (p[1], p.lineno)
 
 def p_command_proc_call(p):
     'command : proc_call SEMICOLON'
@@ -236,55 +247,55 @@ def p_command_proc_call(p):
 
 def p_proc_call(p):
     'proc_call : VARID LPAREN args RPAREN'
-    global procedures_list, currProcedure, symbols_array, curr_line_in_code, temp_arr, temp_arr2
+    #global procedures_list, currProcedure, symbols_array, curr_line_in_code, proc_bracket_args, proc_call_args
+    global curr_line_in_code, proc_call_args
     code = ''
     j = None
     for i in range(len(procedures_list)):
         if procedures_list[i][0] == p[1]:
             j = i
     if j == None:
-        raise Exception("Error: Calling unexisting (or not yet declared) procedure {} in line {}.".format(p[1], p.lexer.lineno))
+        raise Exception("Error: Calling unexisting (or not yet declared) procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
     elif currProcedure == procedures_list[j][0]:
-        raise Exception("Error: Recursive call in procedure {} in line {}.".format(p[1], p.lexer.lineno))
+        raise Exception("Error: Recursive call in procedure {} in line {}.".format(p[1], p.lexer.lineno-1))
     else:
             m = None
-            for i in range(len(temp_arr2)):
+            for i in range(len(proc_call_args)):
                 for k in range(len(symbols_array)):
-                    if temp_arr2[i] == symbols_array[k][0]:
+                    if proc_call_args[i] == symbols_array[k][0]:
                         m = k
                         break
                 if m == None:
-                    for n in range(len(temp_arr)):
-                        if temp_arr2[i] == temp_arr[n][0]:
+                    for n in range(len(proc_bracket_args)):
+                        if proc_call_args[i] == proc_bracket_args[n][0]:
                             m = n
                             break
                     if m == None:
-                        raise Exception("Error: Usage of undeclared variable {} in procedure {} in line {}.".format(temp_arr2[i], currProcedure, p.lexer.lineno))
+                        raise Exception("Error: Use of undeclared variable {} in procedure {} in line {}.".format(proc_call_args[i], currProcedure, p.lexer.lineno-1))
                     else:
                         procNumb = None
                         for n in range(len(procedures_list)):
                             if procedures_list[n][0] == currProcedure:
                                 procNumb = n
                                 break
-                        for n in range(len(procedures_list[procNumb][4])): # j to numer procedury, ktora wywoluje; wczesniej zamiast procName bylo j
-                            if procedures_list[procNumb][4][n][0] == temp_arr2[i]:
+                        for n in range(len(procedures_list[procNumb][2])): # j to numer procedury, ktora wywoluje; wczesniej zamiast procName bylo j
+                            if procedures_list[procNumb][2][n][0] == proc_call_args[i]:
                                 break
-                        code += loadValueToRegister('b', procedures_list[procNumb][4][n][2]) + 'LOAD b\n' + loadValueToRegister('b', procedures_list[j][4][i][2]) + 'STORE b\n'
+                        code += loadValueToRegister('b', procedures_list[procNumb][2][n][2]) + 'LOAD b\n' + loadValueToRegister('b', procedures_list[j][2][i][2]) + 'STORE b\n'
                         curr_line_in_code += 2
                         m = None
                 else: # symbol został wcześniej zadeklarowany i znajduje się w symbols_array
-                    print(procedures_list[j][4], " ", i)
-                    if symbols_array[m][1] == procedures_list[j][4][i][1]: # typy się zgadzają
+                    if symbols_array[m][1] == procedures_list[j][2][i][1]: # typy się zgadzają
                         symbols_array[m][4] = True # dodane, ponieważ można wywołać procedurę z parametrami, które były wcześniej tylko zadeklarowane, ale nie zainicjowane
-                        code += loadValueToRegister('b', procedures_list[j][4][i][2]) + loadValueToRegister('a',symbols_array[m][3]) + 'STORE b\n'
+                        code += loadValueToRegister('b', procedures_list[j][2][i][2]) + loadValueToRegister('a',symbols_array[m][3]) + 'STORE b\n'
                         curr_line_in_code += 1
                         m = None
                     else: # typy się nie zgadzają
-                        raise Exception("Error: Calling procedure {} with an argument ({}) of wrong type in line {}.".format(p[1], symbols_array[m][0], p.lexer.lineno))
-            code += loadValueToRegister('b', procedures_list[j][5]) + 'RST a\nINC a\nSHL a\nSHL a\nSTRK c\nADD c\nSTORE b\nJUMP {}\n'.format(procedures_list[j][3])
+                        raise Exception("Error: Calling procedure {} with an argument ({}) of wrong type in line {}.".format(p[1], symbols_array[m][0], p.lexer.lineno-1))
+            code += loadValueToRegister('b', procedures_list[j][3]) + 'RST a\nINC a\nSHL a\nSHL a\nSTRK c\nADD c\nSTORE b\nJUMP {}\n'.format(procedures_list[j][1])
             curr_line_in_code += 8
             p[0] = code
-    temp_arr2 = []
+    proc_call_args = []
 
 # w args_decl są deklarowane nazwy zmiennych procedury
 # w args są podawane argumenty do procedury
@@ -292,89 +303,90 @@ def p_proc_call(p):
 def p_array_proc_decl(p):
     '''args_decl : args_decl COMMA ARRAYSIGN VARID
                     | ARRAYSIGN VARID'''
-    global temp_arr, first_free_mem_index
+    global proc_bracket_args, first_free_mem_index
     # pierwsza wartość to nazwa, a druga to, że jest tablicą, trzecia to przydzielone miejsce w tablicy
     if len(p) == 5:
-        temp_arr.append([p[4], True, first_free_mem_index])
+        proc_bracket_args.append([p[4], True, first_free_mem_index])
     else:
-        temp_arr.append([p[2], True, first_free_mem_index])
+        proc_bracket_args.append([p[2], True, first_free_mem_index])
     first_free_mem_index += 1
     
 def p_var_proc_decl(p):
     '''args_decl : args_decl COMMA VARID
                     | VARID'''
-    global temp_arr, first_free_mem_index
+    global proc_bracket_args, first_free_mem_index
     if len(p) == 4:
-        temp_arr.append([p[3], False, first_free_mem_index])
+        proc_bracket_args.append([p[3], False, first_free_mem_index])
     else:
-        temp_arr.append([p[1], False, first_free_mem_index])
+        proc_bracket_args.append([p[1], False, first_free_mem_index])
     first_free_mem_index += 1
 
 def p_args_proc(p):
     '''args : args COMMA VARID
             | VARID'''
-    global temp_arr2
+    global proc_call_args
     if len(p) == 4:
-        temp_arr2.append(p[3])
+        proc_call_args.append(p[3])
     else:
-        temp_arr2.append(p[1])
+        proc_call_args.append(p[1])
     
 ### DECLARATIONS OF VARIABLES USED IN A FUNCTION ###
     
 def p_array_use(p):
     '''declarations : declarations COMMA VARID SQLPAREN NUMBER SQRPAREN
                     | VARID SQLPAREN NUMBER SQRPAREN'''
+    global proc_inside_variables
     line = p.lexer.lineno-1 # numer linii, w której jest dopasowany tekst
     if len(p) == 7:
         addSymbolToArray(p[3], True, int(p[5]), line, currProcedure)
         if not currProcedure == None:
             j = None
-            for i in range(len(temp_arr)):
-                if temp_arr[i][0] == p[3]:
+            for i in range(len(proc_bracket_args)):
+                if proc_bracket_args[i][0] == p[3]:
                     j = i
             if j is not None:
-                raise Exception("Error: Symbol {} reused in procedure {} in line {}.".format(temp_arr[j][0], currProcedure, p.lexer.lineno))
+                raise Exception("Error: Symbol {} reused in procedure {} in line {}.".format(proc_bracket_args[j][0], currProcedure, p.lexer.lineno-1))
             else:
-                decl_arr.append(p[3])
+                proc_inside_variables.append(p[3])
     else:
         addSymbolToArray(p[1], True, int(p[3]), line, currProcedure)
         if not currProcedure == None:
             j = None
-            for i in range(len(temp_arr)):
-                if temp_arr[i][0] == p[1]:
+            for i in range(len(proc_bracket_args)):
+                if proc_bracket_args[i][0] == p[1]:
                     j = i
             if j is not None:
-                raise Exception("Error: Symbol {} reused in procedure {} in line {}.".format(temp_arr[j][0], currProcedure, p.lexer.lineno))
+                raise Exception("Error: Symbol {} reused in procedure {} in line {}.".format(proc_bracket_args[j][0], currProcedure, p.lexer.lineno-1))
             else:
-                decl_arr.append(p[1])
+                proc_inside_variables.append(p[1])
     
 def p_var_use(p):
     '''declarations : declarations COMMA VARID
                     | VARID'''
-    global decl_arr, currProcedure
+    global proc_inside_variables
     line = p.lexer.lineno-1
     if len(p) == 4:
         addSymbolToArray(p[3], False, 0, line, currProcedure)
         if not currProcedure == None:
             j = None
-            for i in range(len(temp_arr)):
-                if temp_arr[i][0] == p[3]:
+            for i in range(len(proc_bracket_args)):
+                if proc_bracket_args[i][0] == p[3]:
                     j = i
             if j is not None:
-                raise Exception("Error: Symbol {} reused in procedure {} in line {}.".format(temp_arr[j][0], currProcedure, p.lexer.lineno-1))
+                raise Exception("Error: Symbol {} reused in procedure {} in line {}.".format(proc_bracket_args[j][0], currProcedure, p.lexer.lineno-1))
             else:
-                decl_arr.append(p[3])
+                proc_inside_variables.append(p[3])
     else:
         addSymbolToArray(p[1], False, 0, line, currProcedure)
         if not currProcedure == None:
             j = None
-            for i in range(len(temp_arr)):
-                if temp_arr[i][0] == p[1]:
+            for i in range(len(proc_bracket_args)):
+                if proc_bracket_args[i][0] == p[1]:
                     j = i
             if j is not None:
-                raise Exception("Error: Symbol {} reused in procedure {} in line {}.".format(temp_arr[j][0], currProcedure, p.lexer.lineno-1))
+                raise Exception("Error: Symbol {} reused in procedure {} in line {}.".format(proc_bracket_args[j][0], currProcedure, p.lexer.lineno-1))
             else:
-                decl_arr.append(p[1])
+                proc_inside_variables.append(p[1])
 
 ### COMMANDS ###
 
@@ -388,60 +400,60 @@ def p_commands(p):
     
 def p_assign(p):
     'command : identifier ASSIGN expression SEMICOLON'
-    global symbols_array, curr_line_in_code
+    global curr_line_in_code
     code = ''
     j = None
     for i in range(len(symbols_array)):
         #if p[1][0] == symbols_array[i][0]:
-        if p[1][0][0][0] == symbols_array[i][0] and symbols_array[i][5] == currProcedure:
+        if p[1][0] == symbols_array[i][0] and symbols_array[i][5] == currProcedure: # było p[1][0][0][0]
             j = i
     if j == None:
         if currProcedure == None:
-            raise Exception("Error: Usage of undeclared variable {} in line {}.".format(p[1][0][0][0], p.lexer.lineno))
+            raise Exception("Error: Use of undeclared variable {} in line {}.".format(p[1][0], p.lexer.lineno-1)) # było p[1][0][0][0]
         else:
             for i in range(len(procedures_list)):
                 if procedures_list[i][0] == currProcedure:
                     j = i
             k = None
-            for i in range(len(procedures_list[j][4])):
-                if procedures_list[j][4][i][0] == p[1][0][0][0]:
+            for i in range(len(procedures_list[j][2])):
+                if procedures_list[j][2][i][0] == p[1][0]: #[0][0]: # p[1][0]
                     k = i
             if k == None:
-                raise Exception("Error: Usage of undeclared variable {} in line {}.".format(p[1][0][0][0], p.lexer.lineno))
+                raise Exception("Error: Use of undeclared variable {} in line {}.".format(p[1][0], p.lexer.lineno-1)) # p[1][0][0][0]
             else:
-                if type(p[3][0]) is str:
+                if isinstance(p[3], tuple):#if type(p[3][0]) is str: # p[3] to jest wyrażenie
                     if p[1][1]:
                         code += p[3][1] + loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1, True) + 'PUT b\nGET {}\nSTORE b\n'.format(p[3][0])
                         curr_line_in_code += 3
                     else:
-                        code += p[3][1] + loadValuesToRegs((procedures_list[j][4][k][2],), ('b',), p.lexer.lineno-1, True) + 'LOAD b\nPUT b\nGET {}\nSTORE b\n'.format(p[3][0])
+                        code += p[3][1] + loadValuesToRegs((procedures_list[j][2][k][2],), ('b',), p.lexer.lineno-1, True) + 'LOAD b\nPUT b\nGET {}\nSTORE b\n'.format(p[3][0])
                         curr_line_in_code += 4
-                else:
-                    if p[1][1]:
+                else: # p[3] to value
+                    if p[1][1]: # przypisywana jest wartość do elementu tablicy
                         code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, False) + loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1, True) + 'PUT b\nGET c\nSTORE b\n' # bylo LOAD b\nPUT b\nGET c\nSTORE b\n'
                         curr_line_in_code += 3
-                    else:
-                        code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, False) + loadValuesToRegs((procedures_list[j][4][k][2],), ('b',), p.lexer.lineno-1, True) + 'LOAD b\nPUT b\nGET c\nSTORE b\n'
+                    else: # przypisywana jest wartość do zmiennej
+                        code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, False) + loadValuesToRegs((procedures_list[j][2][k][2],), ('b',), p.lexer.lineno-1, True) + 'LOAD b\nPUT b\nGET c\nSTORE b\n'
                         curr_line_in_code += 4
     else:
         symbols_array[j][4] = True
-        if type(p[3][0]) is str:
-            # to jest wyrażenie
+        if isinstance(p[3], tuple): #if type(p[3][0]) is str:
+            # p[3] to jest wyrażenie
             code += p[3][1] + loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1, True) + 'GET {}\nSTORE b\n'.format(p[3][0])
         else:
-            # to jest liczba, zmienna albo element tablicy
+            # p[3] to value
             code += loadValuesToRegs((p[3],), ('c',), p.lexer.lineno-1, False) + loadValuesToRegs((p[1],), ('b',), p.lexer.lineno-1, True) + 'GET c\nSTORE b\n'
         curr_line_in_code += 2
     p[0] = code
 
 def p_if_statement(p):
     'command : IF condition THEN commands ENDIF'
-    global curr_line_in_code, howdeep
+    global howdeep
     code = ''
-    commLen = len(p[4].split('\n'))
+    commandLen = len(p[4].split('\n'))
     if isinstance(p[2], tuple):
         # w warunku występuje >= lub <= - są tam dwa skoki zamiast jednego, dlatego ten przypadek osobno
-        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen + 1) + p[2][0][2] + '{}\n'.format(curr_line_in_code)
+        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commandLen + 1) + p[2][0][2] + '{}\n'.format(curr_line_in_code)
     else:
         # w warunku nie ma >= ani <=
         code += p[2] + '{}\n'.format(curr_line_in_code)
@@ -452,15 +464,14 @@ def p_if_else_statement(p):
     'command : IF condition THEN commands ELSE commands ENDIF'
     global curr_line_in_code, howdeep
     code = ''
-    commLen1 = len(p[4].split('\n'))
-    commLen2 = len(p[6].split('\n'))
+    commandLen1 = len(p[4].split('\n'))
+    commandLen2 = len(p[6].split('\n'))
     if isinstance(p[2], tuple):
-        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen1 - commLen2 + 2) + p[2][0][2] + '{}\n'.format(curr_line_in_code-commLen2 + 2) \
+        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commandLen1 - commandLen2 + 2) + p[2][0][2] + '{}\n'.format(curr_line_in_code-commandLen2 + 2) \
               + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 1) + p[6]
-        curr_line_in_code += 1
     else:
-        code += p[2] + '{}\n'.format(curr_line_in_code - commLen2 + 2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 1) + p[6]
-        curr_line_in_code += 1
+        code += p[2] + '{}\n'.format(curr_line_in_code - commandLen2 + 2) + p[4] + 'JUMP {}\n'.format(curr_line_in_code + 1) + p[6]
+    curr_line_in_code += 1
     howdeep -= 1
     p[0] = code
 
@@ -468,34 +479,33 @@ def p_while_loop(p):
     'command : WHILE condition DO commands ENDWHILE'
     global curr_line_in_code, howdeep
     code = ''
-    condLen = 0
-    commLen = len(p[4].split('\n'))
+    #condLen = 0
+    commandLen = len(p[4].split('\n'))
     if isinstance(p[2], tuple):
         addLen = len(p[2][0][0].split('\n'))
         condLen = 6
-        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commLen + 1) + p[2][0][2] + '{}\n'.format(curr_line_in_code + 1) + p[4] \
-                + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen - addLen + 2)
+        code += p[2][0][0] + p[2][0][1] + '{}\n'.format(curr_line_in_code - commandLen + 1) + p[2][0][2] + '{}\n'.format(curr_line_in_code + 1) + p[4] \
+                + 'JUMP {}\n'.format(curr_line_in_code - condLen - commandLen - addLen + 2)
     else:
         condLen = len(p[2].split('\n'))
-        code += p[2] + '{}\n'.format(curr_line_in_code + 1) + p[4] + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen + 1)
+        code += p[2] + '{}\n'.format(curr_line_in_code + 1) + p[4] + 'JUMP {}\n'.format(curr_line_in_code - condLen - commandLen + 1)
     curr_line_in_code += 1
     howdeep -= 1
     p[0] = code
 
 def p_repeat_loop(p):
     'command : REPEAT commands UNTIL condition SEMICOLON'
-    global curr_line_in_code, howdeep
+    global howdeep
     code = ''
     condLen = 0
-    commLen = len(p[2].split('\n'))
+    commandLen = len(p[2].split('\n'))
     if isinstance(p[4], tuple):
         condLen= len(p[4][1].split('\n')) + len(p[4][2].split('\n'))
-        code += p[2] + p[4][0] + p[4][1] + '{}\n'.format(curr_line_in_code - condLen - commLen) + p[4][2] \
-                + '{}\n'.format(curr_line_in_code + 1) + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen)
+        code += p[2] + p[4][0] + p[4][1] + '{}\n'.format(curr_line_in_code  - 1) + p[4][2] \
+                + ' {}\n'.format(curr_line_in_code - condLen - commandLen)
     else:
         condLen = len(p[4].split('\n'))
-        code += p[2] + p[4] + '{}\n'.format(curr_line_in_code + 1) + 'JUMP {}\n'.format(curr_line_in_code - condLen - commLen + 1)
-    curr_line_in_code += 1
+        code += p[2] + p[4] + '{}\n'.format(curr_line_in_code - condLen - commandLen + 1)
     howdeep -= 1
     p[0] = code
 
@@ -570,12 +580,13 @@ def p_multiply(p):
     global curr_line_in_code
     code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], p.lexer.lineno-1, False)
     currLi = curr_line_in_code
-    if not p.lexer.isElse:
-        code += 'RST f\nGET c\nJZERO {}\nGET d\nJZERO {}\nPUT e\nSHR e\nSHL e\nSUB e\nJPOS {}\nSHL c\nSHR d\nJUMP {}\nGET f\nADD c\n\
-PUT f\nDEC d\nJUMP {}\n'.format(currLi+18, currLi+18, currLi+13, currLi+3, currLi+3)
-    else:
+    if p.lexer.isElse:
         code += 'RST f\nGET c\nJZERO {}\nGET d\nJZERO {}\nPUT e\nSHR e\nSHL e\nSUB e\nJPOS {}\nSHL c\nSHR d\nJUMP {}\nGET f\nADD c\n\
 PUT f\nDEC d\nJUMP {}\n'.format(currLi+19, currLi+19, currLi+14, currLi+4, currLi+4)
+    else:
+        code += 'RST f\nGET c\nJZERO {}\nGET d\nJZERO {}\nPUT e\nSHR e\nSHL e\nSUB e\nJPOS {}\nSHL c\nSHR d\nJUMP {}\nGET f\nADD c\n\
+PUT f\nDEC d\nJUMP {}\n'.format(currLi+18, currLi+18, currLi+13, currLi+3, currLi+3)
+    
     curr_line_in_code += 18
     p[0] = ('f', code)
 
@@ -584,9 +595,14 @@ def p_divide(p):
     global curr_line_in_code
     code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], p.lexer.lineno-1, False)
     currLi = curr_line_in_code
-    code += 'RST f\nGET d\nJZERO {}\nGET c\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB c\nJPOS {}\nINC f\nJUMP {}\nRST g\nINC g\nGET d\nPUT e\nSHL e\n\
+    if p.lexer.lineno:
+        code += 'RST f\nGET d\nJZERO {}\nGET c\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB c\nJPOS {}\nINC f\nJUMP {}\nRST g\nINC g\nGET d\nPUT e\nSHL e\n\
 SHL g\nGET c\nSUB e\nJPOS {}\nGET e\nSUB c\nJZERO {}\nSHR g\nGET f\nADD g\nPUT f\nSHR e\nGET c\nSUB e\nPUT c\nJUMP {}\nGET f\nADD g\nPUT f\n\
 '.format(currLi+37, currLi+37, currLi+13, currLi+37, currLi+37, currLi+17, currLi+34, currLi+4)
+    else:
+        code += 'RST f\nGET d\nJZERO {}\nGET c\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB c\nJPOS {}\nINC f\nJUMP {}\nRST g\nINC g\nGET d\nPUT e\nSHL e\n\
+SHL g\nGET c\nSUB e\nJPOS {}\nGET e\nSUB c\nJZERO {}\nSHR g\nGET f\nADD g\nPUT f\nSHR e\nGET c\nSUB e\nPUT c\nJUMP {}\nGET f\nADD g\nPUT f\n\
+'.format(currLi+36, currLi+36, currLi+12, currLi+36, currLi+36, currLi+16, currLi+33, currLi+3)
 
     curr_line_in_code += 36
     p[0] = ('f', code)
@@ -596,7 +612,11 @@ def p_modulo(p):
     global curr_line_in_code
     code = loadValuesToRegs([p[1], p[3]], ['c', 'd'], p.lexer.lineno-1, False)
     currLi = curr_line_in_code
-    code += 'GET d\nJPOS {}\nPUT c\nJUMP {}\nGET c\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB c\nJPOS {}\nRST c\nJUMP {}\nGET d\nPUT e\nSHL e\nGET c\nSUB e\nJPOS {}\nGET e\nSUB c\n\
+    if p.lexer.lineno:
+        code += 'GET d\nJPOS {}\nPUT c\nJUMP {}\nGET c\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB c\nJPOS {}\nRST c\nJUMP {}\nGET d\nPUT e\nSHL e\nGET c\nSUB e\nJPOS {}\nGET e\nSUB c\n\
+JZERO {}\nSHR e\nGET c\nSUB e\nPUT c\nSUB d\nJPOS {}\nGET d\nSUB c\nJZERO {}\n'.format(currLi + 5, currLi+32, currLi+32, currLi+14, currLi+32, currLi+32, currLi+16, currLi+12, currLi+14, currLi+12)
+    else:
+        code += 'GET d\nJPOS {}\nPUT c\nJUMP {}\nGET c\nJZERO {}\nSUB d\nJPOS {}\nGET d\nSUB c\nJPOS {}\nRST c\nJUMP {}\nGET d\nPUT e\nSHL e\nGET c\nSUB e\nJPOS {}\nGET e\nSUB c\n\
 JZERO {}\nSHR e\nGET c\nSUB e\nPUT c\nSUB d\nJPOS {}\nGET d\nSUB c\nJZERO {}\n'.format(currLi + 4, currLi+31, currLi+31, currLi+13, currLi+31, currLi+31, currLi+15, currLi+11, currLi+13, currLi+11)
     curr_line_in_code += 31
     p[0] = ('c', code)
@@ -607,10 +627,10 @@ def p_read(p):
     code = ''
     j = None
     for i in range(len(symbols_array)):
-        if p[2][0][0][0] == symbols_array[i][0]:
+        if p[2][0][0][0] == symbols_array[i][0]: #if p[2][0]
             j = i
     if j == None:
-        raise Exception("Error: Usage of undeclared variable {} in line {}.".format(p[2][0], p.lexer.lineno-1))
+        raise Exception("Error: Use of undeclared variable {} in line {}.".format(p[2][0], p.lexer.lineno-1))
     else:
         if p[2][1]:
             # to jest tablica
@@ -623,7 +643,7 @@ def p_read(p):
         else:
             # to jest zmienna
             if symbols_array[j][1]:
-                raise Exception("Error: Incorrect usage of array {} in line {}.".format(symbols_array[j][0], p.lexer.lineno-1))
+                raise Exception("Error: Incorrect use of array {} in line {}.".format(symbols_array[j][0], p.lexer.lineno-1))
             else:
                 code += 'READ\n' + loadValueToRegister('b', symbols_array[j][3]) + 'STORE b\n'
                 curr_line_in_code += 2
@@ -634,43 +654,46 @@ def p_read(p):
 def p_write(p):
     'command : WRITE value SEMICOLON'
     global curr_line_in_code
-    code = ''
-    if p[2][0][0][1]:
+    #code = ''
+    '''if len(p[2]) == 1: #p[2][0][0][1]: #if isinstance(p[2][0], int)
         # to jest liczba
-        code += loadValueToRegister('a', p[2][0][0][0]) + 'WRITE\n'
+        code += loadValueToRegister('a', p[2][0]) + 'WRITE\n' # p[2][0][0][0]
     else:
         # to jest albo zmienna albo element tablicy
         if p[2][1]:
             # to jest tablica
-            code += loadArrayToRegister(p[2][0][0][0], 'a', p[2][2], p.lexer.lineno-1, False) + 'WRITE\n'
+            code += loadArrayToRegister(p[2][0], 'a', p[2][2], p.lexer.lineno-1, False) + 'WRITE\n' # p[2][0][0][0], p[2][2]
         else:
             # to jest zmienna
-            code += loadVariableToRegister(p[2][0][0][0], 'a', p.lexer.lineno-1, False) + 'WRITE\n'
+            code += loadVariableToRegister(p[2][0], 'a', p.lexer.lineno-1, False) + 'WRITE\n' # p[2][0][0][0]'''
+    code = loadValuesToRegs((p[2],), ('a',), p.lexer.lineno-1, False) + 'WRITE\n'
     curr_line_in_code += 1
     p[0] = code
 
 def p_value_numb(p):
     'value : NUMBER'
-    p[0] = (((p[1], True),),)
+    p[0] = [p[1]]
+    #p[0] = (((p[1], True),),)
     
 def p_value_id(p):
     'value : identifier'
-    p[0] = p[1]
+    p[0] = p[1] # nic nie zmienione
 
 def p_identifier(p):
     'identifier : VARID'
+    p[0] = [p[1], False] # najpierw wartość zmiennej, a potem, że nie jest tablicą; TO BYŁ TUPLE
     # w nawiasie podana jest najpierw nazwa zmiennej, a potem, czy jest tablicą
-    p[0] = (((p[1], False),), False)
+    #p[0] = (((p[1], False),), False)
     
 def p_array_identifier(p):
     '''identifier : VARID SQLPAREN NUMBER SQRPAREN
                     | VARID SQLPAREN VARID SQRPAREN'''
-    p[0] = (((p[1], False),), True, p[3])
+    p[0] = [p[1], True, p[3]]
+    #p[0] = (((p[1], False),), True, p[3])
 
 ### SYNTAX ERRORS ###
 
 def p_error(p):
-    print(p)
     raise SyntaxError("Error: Syntax error in line {}.".format(p.lexer.lineno-1))
 
 programme = ''
@@ -681,9 +704,9 @@ with open(sys.argv[1], "r") as f:
     lex = lexer
     parser = yacc.yacc()
 
-try:
+#try:
     compiled = parser.parse(programme, tracking=True)
     with open(sys.argv[2], "w") as file:
         file.write(compiled)
-except Exception as ex:
-    print(ex, " ")
+#except Exception as ex:
+#    print("Error: ", ex)
